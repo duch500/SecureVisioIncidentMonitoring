@@ -1,0 +1,300 @@
+"""Pętla monitorująca - spina wykrywanie okien, odczyt i maszynę stanów.
+
+Worker działa w osobnym wątku i komunikuje się z GUI wyłącznie przez sygnały.
+Jest to celowe: odczyt UI Automation potrafi zająć ułamek sekundy na okno,
+a wykonywany w wątku GUI zamrażałby interfejs przy każdym sprawdzeniu.
+
+Worker nie tworzy okien Qt - decyzję o pokazaniu alarmu podejmuje odbiorca
+sygnałów w wątku GUI. Widgety Qt wolno tworzyć wyłącznie w wątku głównym.
+"""
+
+from __future__ import annotations
+
+import logging
+import time
+from dataclasses import dataclass, field
+from datetime import datetime
+from typing import Optional
+
+from PySide6.QtCore import QThread, Signal
+
+from .config import AppSettings
+from .state_machine import EventAlert, MonitorState
+from .uia_reader import GridReadError, read_incidents
+from .window_resolver import ClientResolver, is_window_minimized
+
+logger = logging.getLogger(__name__)
+
+# Ziarnistość przerywania oczekiwania między sprawdzeniami. Pętla śpi krótkimi
+# odcinkami, żeby zatrzymanie monitora nie czekało na pełny interwał.
+_SLEEP_STEP_SEC = 0.1
+
+
+@dataclass
+class ClientStatus:
+    """Bieżący stan monitorowania jednego klienta - na potrzeby GUI i diagnostyki."""
+
+    label: str
+    is_available: bool = False
+    last_read_at: Optional[datetime] = None
+    last_read_duration: float = 0.0
+    incident_count: int = 0
+    active_events: int = 0
+    is_minimized: bool = False
+    error: str = ""
+    method: str = "UI Automation"
+
+    @property
+    def state_text(self) -> str:
+        """Krótki opis stanu do wyświetlenia w tabeli GUI."""
+        if not self.is_available:
+            return "NIEDOSTĘPNY"
+        if self.active_events:
+            return f"NOWE ZDARZENIE ({self.active_events})"
+        return "OK"
+
+    @property
+    def last_read_text(self) -> str:
+        if self.last_read_at is None:
+            return "-"
+        return self.last_read_at.strftime("%H:%M:%S")
+
+
+@dataclass
+class _ClientRuntime:
+    """Wewnętrzny stan śledzenia dostępności klienta między cyklami."""
+
+    status: ClientStatus
+    was_available: bool = False
+    # Klient uznany za utracony, dla którego już zaalarmowano - zapobiega
+    # powtarzaniu alarmu przy każdym cyklu, gdy SecureVisio pozostaje zamknięte.
+    loss_reported: bool = False
+
+
+class MonitorWorker(QThread):
+    """Cyklicznie sprawdza wszystkie skonfigurowane środowiska SecureVisio.
+
+    Sygnały:
+        new_alerts: Świeżo wykryte przejścia na status nowego zdarzenia.
+        clients_lost: Etykiety klientów, których okno właśnie zniknęło.
+        clients_returned: Etykiety klientów, których okno wróciło.
+        status_updated: Pełny stan wszystkich klientów po każdym cyklu.
+        tick: Zakończono cykl sprawdzania (do odliczania przypomnień).
+        log_message: Komunikat do wyświetlenia w logu GUI.
+    """
+
+    new_alerts = Signal(list)
+    clients_lost = Signal(list)
+    clients_returned = Signal(list)
+    status_updated = Signal(list)
+    tick = Signal(list)
+    log_message = Signal(str)
+
+    def __init__(self, settings: AppSettings) -> None:
+        super().__init__()
+        self._settings = settings
+        self._state = MonitorState(
+            phrases=settings.default_phrases,
+            alert_on_first_scan=settings.alert_on_first_scan,
+        )
+        self._resolver = ClientResolver(
+            base_dir=settings.base_dir or None,
+            manual_map=settings.manual_map(),
+        )
+        self._runtimes: dict[str, _ClientRuntime] = {}
+        # Klienci pilnowani w bieżącej sesji - patrz _expected_clients.
+        self._session_clients: set[str] = set()
+        self._running = False
+        self._check_now = False
+
+    # --- Sterowanie --------------------------------------------------------
+
+    def stop(self) -> None:
+        """Sygnalizuje zatrzymanie pętli. Bezpieczne do wywołania z GUI."""
+        self._running = False
+
+    def check_now(self) -> None:
+        """Wymusza natychmiastowe sprawdzenie, bez czekania na interwał."""
+        self._check_now = True
+
+    def acknowledge(self, alerts: list[EventAlert]) -> None:
+        """Oznacza wskazane zdarzenia jako potwierdzone przez operatora."""
+        by_client: dict[str, list[str]] = {}
+        for alert in alerts:
+            by_client.setdefault(alert.client, []).append(alert.incident_id)
+
+        for client, incident_ids in by_client.items():
+            self._state.machine_for(client).acknowledge(incident_ids)
+
+    def active_alerts(self) -> list[EventAlert]:
+        """Zdarzenia nadal nieobsłużone i niepotwierdzone."""
+        return self._state.active_alerts()
+
+    # --- Pętla -------------------------------------------------------------
+
+    def run(self) -> None:  # noqa: D102 - API QThread
+        self._running = True
+        # Nowa sesja - lista pilnowanych środowisk budowana od zera.
+        self._session_clients.clear()
+        self._runtimes.clear()
+        self.log_message.emit("Rozpoczęto monitorowanie.")
+        logger.debug("Worker wystartował (interwał %ds).", self._settings.interval_sec)
+
+        # Pierwsze sprawdzenie od razu - bez czekania pełnego interwału.
+        self._run_cycle()
+
+        while self._running:
+            self._sleep_interval()
+            if not self._running:
+                break
+            self._run_cycle()
+
+        self.log_message.emit("Zatrzymano monitorowanie.")
+        logger.debug("Worker zakończył pracę.")
+
+    def _sleep_interval(self) -> None:
+        """Czeka do następnego cyklu, reagując na stop i wymuszone sprawdzenie."""
+        deadline = time.monotonic() + self._settings.interval_sec
+        while self._running and time.monotonic() < deadline:
+            if self._check_now:
+                self._check_now = False
+                return
+            time.sleep(_SLEEP_STEP_SEC)
+
+    def _run_cycle(self) -> None:
+        """Wykonuje jeden pełny przebieg: wykrycie okien, odczyt, analiza."""
+        try:
+            resolved = self._resolver.resolve_all()
+        except Exception as exc:  # noqa: BLE001 - pętla nie może umrzeć
+            logger.exception("Błąd wykrywania okien: %s", exc)
+            self.log_message.emit(f"Błąd wykrywania okien: {exc}")
+            return
+
+        # Mapa klient -> okno. Przy duplikacie ścieżki wygrywa pierwsze
+        # znalezione okno, a fakt kolizji trafia do logu.
+        windows: dict[str, object] = {}
+        for item in resolved:
+            if not item.is_recognized or item.client_label is None:
+                continue
+            if item.client_label in windows:
+                self.log_message.emit(
+                    f"Uwaga: wykryto więcej niż jedno okno dla '{item.client_label}'. "
+                    "Monitoruję pierwsze."
+                )
+                continue
+            windows[item.client_label] = item
+
+        expected = self._expected_clients(windows.keys())
+        fresh_alerts: list[EventAlert] = []
+        lost_clients: list[str] = []
+        returned_clients: list[str] = []
+
+        for label in expected:
+            item = windows.get(label)
+            runtime = self._runtime_for(label)
+
+            if item is None:
+                if runtime.was_available and not runtime.loss_reported:
+                    lost_clients.append(label)
+                    runtime.loss_reported = True
+                    self.log_message.emit(f"{label}: okno SecureVisio zniknęło.")
+                    logger.warning("Klient %s: utracono okno.", label)
+                runtime.was_available = False
+                runtime.status.is_available = False
+                runtime.status.error = "Okno SecureVisio niedostępne"
+                # Stan incydentów pozostaje nienaruszony - patrz mark_unavailable.
+                self._state.machine_for(label).mark_unavailable()
+                continue
+
+            if runtime.loss_reported:
+                returned_clients.append(label)
+
+            fresh_alerts.extend(self._read_client(label, item, runtime))
+
+        statuses = [r.status for r in self._runtimes.values()]
+        self.status_updated.emit(statuses)
+
+        if returned_clients:
+            self.clients_returned.emit(returned_clients)
+
+        if lost_clients:
+            self.clients_lost.emit(lost_clients)
+
+        if fresh_alerts:
+            self.new_alerts.emit(fresh_alerts)
+
+        self.tick.emit(self._state.active_alerts())
+
+    def _read_client(self, label: str, item, runtime: _ClientRuntime) -> list[EventAlert]:
+        """Odczytuje jedno środowisko i aktualizuje jego stan."""
+        hwnd = item.window.hwnd
+        status = runtime.status
+
+        start = time.perf_counter()
+        try:
+            snapshot = read_incidents(hwnd)
+        except GridReadError as exc:
+            status.is_available = False
+            status.error = str(exc)
+            self._state.machine_for(label).mark_unavailable()
+            logger.warning("Klient %s: %s", label, exc)
+            self.log_message.emit(f"{label}: nie udało się odczytać listy incydentów.")
+            return []
+        except Exception as exc:  # noqa: BLE001 - nieoczekiwany błąd nie może zabić pętli
+            status.is_available = False
+            status.error = f"Nieoczekiwany błąd: {exc}"
+            self._state.machine_for(label).mark_unavailable()
+            logger.exception("Klient %s: nieoczekiwany błąd odczytu.", label)
+            return []
+
+        duration = time.perf_counter() - start
+
+        profile = self._settings.find_client(label)
+        phrases = (
+            profile.effective_phrases(self._settings.default_phrases)
+            if profile
+            else self._settings.default_phrases
+        )
+        machine = self._state.machine_for(label, phrases)
+
+        alerts = machine.update(snapshot.incidents)
+
+        status.is_available = True
+        status.error = ""
+        status.last_read_at = datetime.now()
+        status.last_read_duration = duration
+        status.incident_count = len(snapshot.incidents)
+        status.active_events = len(machine.active_alerts())
+        status.is_minimized = is_window_minimized(hwnd)
+
+        runtime.was_available = True
+        runtime.loss_reported = False
+
+        if alerts:
+            self.log_message.emit(
+                f"{label}: wykryto {len(alerts)} nowe zdarzenie(a)."
+            )
+
+        return alerts
+
+    def _expected_clients(self, detected_labels) -> list[str]:
+        """Ustala listę klientów pilnowanych w tej sesji monitorowania.
+
+        Lista rośnie o każde nowo wykryte środowisko i nie kurczy się przy
+        zniknięciu - dzięki temu zamknięcie SecureVisio jest wykrywane jako
+        utrata, a nie jako "tego klienta nigdy nie było". Zakres sesji kończy
+        się przy zatrzymaniu monitorowania: kolejny start buduje listę od nowa.
+        """
+        configured = self._settings.enabled_clients()
+        if configured:
+            self._session_clients.update(c.label for c in configured)
+        else:
+            self._session_clients.update(detected_labels)
+        return sorted(self._session_clients)
+
+    def _runtime_for(self, label: str) -> _ClientRuntime:
+        runtime = self._runtimes.get(label)
+        if runtime is None:
+            runtime = _ClientRuntime(status=ClientStatus(label=label))
+            self._runtimes[label] = runtime
+        return runtime

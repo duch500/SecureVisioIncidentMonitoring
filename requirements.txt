@@ -1,0 +1,6 @@
+PySide6>=6.6.0
+uiautomation>=2.0.18
+pywin32>=306
+
+# Tylko do uruchamiania testów automatycznych:
+# pytest>=8.0.0
