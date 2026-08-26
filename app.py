@@ -10,10 +10,12 @@ import logging
 import sys
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 from securevisio_monitor.config import ConfigError, load_settings
 from securevisio_monitor.gui.main_window import MainWindow
+from securevisio_monitor.icon import find_icon
 from securevisio_monitor.logging_setup import setup_logging
 
 logger = logging.getLogger(__name__)
@@ -30,6 +32,14 @@ def main() -> int:
 
     app = QApplication(sys.argv)
     app.setApplicationName("SecureVisio Monitor")
+
+    # Ikona może mieć dowolną nazwę - wystarczy wrzucić plik .ico do katalogu
+    # programu. Brak takiego pliku nie jest błędem - program działa z ikoną
+    # domyślną Qt.
+    icon_path = find_icon()
+    if icon_path is not None:
+        app.setWindowIcon(QIcon(str(icon_path)))
+        logger.debug("Użyto ikony: %s", icon_path)
 
     # Zamknięcie okna alarmu nie może kończyć aplikacji - alarmy pojawiają się
     # i znikają wielokrotnie w trakcie pracy.
