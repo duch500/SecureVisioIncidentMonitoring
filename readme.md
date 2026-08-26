@@ -240,9 +240,9 @@ Program musi wiedzieć, gdzie na dysku znajdują się Twoje środowiska SecureVi
 
 Przykład: jeżeli Twoje środowiska wyglądają tak: 
 
-<mark>C:\SecureVisio\COIG\...</mark> C:\SecureVisio\KCC\... 
+<mark>C:\SecureVisio\\...</mark> C:\SecureVisio\\... 
 
-C:\SecureVisio\MSIT\... 
+C:\SecureVisio\\... 
 
 Strona 7 z 19 
 
@@ -252,7 +252,7 @@ SecureVisio Monitor - Instrukcja użytkownika
 
 ##### <mark>C:\SecureVisio</mark> 
 
-Nazwy klientów, które zobaczysz później na alarmie, biorą się z nazw tych katalogów. W przykładzie powyżej będą to: COIG, KCC, MSIT. 
+Nazwy klientów, które zobaczysz później na alarmie, biorą się z nazw tych katalogów. W przykładzie powyżej będą to: , , . 
 
 ### **Krok 4 - uruchom monitorowanie** 
 
@@ -264,7 +264,7 @@ Kliknij przycisk „Start” na dole okna.
 
 |**Kolumna**|**Co powinna pokazywać**|
 |---|---|
-|Klient|Nazwę środowiska, na przykład COIG|
+|Klient|Nazwę środowiska, na przykład |
 |Stan|OK na zielonym tle|
 |Ostatni odczyt|Aktualną godzinę|
 |Incydenty|Liczbę incydentów widoczną na liście w SecureVisio|
