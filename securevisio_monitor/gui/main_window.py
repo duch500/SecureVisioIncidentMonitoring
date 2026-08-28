@@ -12,6 +12,7 @@ w odpowiedzi na sygnały workera, a nie w samym workerze.
 from __future__ import annotations
 
 import logging
+import time
 from datetime import datetime
 from typing import Optional
 
@@ -40,9 +41,24 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ..about import (
+    APP_AUTHOR,
+    APP_DESCRIPTION,
+    APP_LOGO_AUTHOR,
+    APP_NAME,
+    APP_VERSION,
+)
 from ..alert_manager import AlertManager
-from ..config import AppSettings, ConfigError, save_settings
+from ..config import (
+    ALARM_MODE_FULLSCREEN,
+    ALARM_MODE_TOAST,
+    AppSettings,
+    ConfigError,
+    save_settings,
+)
+from ..icon import find_icon
 from ..logging_setup import set_debug_mode
+from ..notifications import NOTIFICATIONS_AVAILABLE, ToastNotifier
 from ..sound import (
     SOUNDS_DIR,
     AlarmSound,
@@ -97,6 +113,19 @@ class MainWindow(QMainWindow):
 
         self._sound = AlarmSound()
         ensure_default_sound()
+
+        # Powiadomienia systemowe - alternatywny tryb alarmowania.
+        self._toasts = ToastNotifier()
+        self._toasts.show_requested.connect(self._on_show_requested)
+        self._toasts.acknowledged.connect(self._on_toast_acknowledged)
+        self._toasts.main_window_requested.connect(self._bring_to_front)
+
+        # Moment ostatniego powiadomienia - podstawa odliczania przypomnień
+        # w trybie powiadomień (w trybie pełnoekranowym robi to AlertManager).
+        self._last_toast_at: Optional[float] = None
+        self._toast_sound_timer = QTimer(self)
+        self._toast_sound_timer.setSingleShot(True)
+        self._toast_sound_timer.timeout.connect(self._sound.stop)
 
         # Odliczanie przypomnień musi działać także wtedy, gdy worker akurat
         # nie zgłasza nowych zdarzeń - stąd niezależny timer.
@@ -195,9 +224,32 @@ class MainWindow(QMainWindow):
         flags_row.addStretch()
         layout.addLayout(flags_row)
 
+        layout.addLayout(self._build_alarm_mode_row())
         layout.addLayout(self._build_sound_row())
 
         return group
+
+    def _build_alarm_mode_row(self) -> QHBoxLayout:
+        row = QHBoxLayout()
+        row.addWidget(QLabel("Sposób alarmowania:"))
+
+        self.cb_alarm_mode = QComboBox()
+        self.cb_alarm_mode.addItem("Pełny ekran (wszystkie monitory)", ALARM_MODE_FULLSCREEN)
+        self.cb_alarm_mode.addItem("Powiadomienia Windows (róg ekranu)", ALARM_MODE_TOAST)
+        self.cb_alarm_mode.setMinimumWidth(280)
+        self.cb_alarm_mode.currentIndexChanged.connect(self._on_alarm_mode_changed)
+        row.addWidget(self.cb_alarm_mode)
+
+        self.lbl_alarm_mode_note = QLabel("")
+        row.addWidget(self.lbl_alarm_mode_note)
+
+        row.addStretch()
+
+        self.btn_about = QPushButton("O programie")
+        self.btn_about.clicked.connect(self._on_about)
+        row.addWidget(self.btn_about)
+
+        return row
 
     def _build_sound_row(self) -> QHBoxLayout:
         row = QHBoxLayout()
@@ -293,6 +345,11 @@ class MainWindow(QMainWindow):
         self.sb_repeat.setValue(s.alarm_repeat_sec)
         self.chk_first_scan.setChecked(s.alert_on_first_scan)
 
+        mode_index = self.cb_alarm_mode.findData(s.alarm_mode)
+        if mode_index >= 0:
+            self.cb_alarm_mode.setCurrentIndex(mode_index)
+        self._update_alarm_mode_note()
+
         self.chk_sound.setChecked(s.sound_enabled)
         self._refresh_sound_list()
         if s.sound_file:
@@ -327,6 +384,7 @@ class MainWindow(QMainWindow):
             self._settings.alarm_display_sec = self.sb_display.value()
             self._settings.alarm_repeat_sec = self.sb_repeat.value()
             self._settings.alert_on_first_scan = self.chk_first_scan.isChecked()
+            self._settings.alarm_mode = self.cb_alarm_mode.currentData()
             self._settings.sound_enabled = self.chk_sound.isChecked()
             self._settings.sound_file = self.cb_sound.currentData() or ""
             self._settings.sound_volume = self.sl_volume.value()
@@ -380,6 +438,9 @@ class MainWindow(QMainWindow):
     def stop_monitoring(self) -> None:
         self._reminder_timer.stop()
         self._sound.stop()
+        self._toast_sound_timer.stop()
+        self._toasts.clear_all()
+        self._last_toast_at = None
         self._alerts.force_hide()
 
         if self._worker is not None:
@@ -403,7 +464,7 @@ class MainWindow(QMainWindow):
         # wyszarza tekst tak, że w trybie ciemnym staje się nieczytelny.
         for field in (self.txt_base_dir, self.txt_phrases):
             field.setReadOnly(running)
-        for widget in (self.sb_interval, self.chk_first_scan):
+        for widget in (self.sb_interval, self.chk_first_scan, self.cb_alarm_mode):
             widget.setEnabled(not running)
 
     def _on_worker_finished(self) -> None:
@@ -510,13 +571,108 @@ class MainWindow(QMainWindow):
                 f"NOWE ZDARZENIE — {alert.client} / {alert.location_label} "
                 f"(incydent {alert.incident_id})"
             )
-        self._alerts.on_new_alerts(alerts)
-        self._start_alarm_sound()
+
+        if self._toast_mode():
+            self._show_toast_alerts(alerts)
+        else:
+            self._alerts.on_new_alerts(alerts)
+            self._start_alarm_sound()
+
+    def _toast_mode(self) -> bool:
+        """Czy aktywny jest tryb powiadomień systemowych."""
+        return self.cb_alarm_mode.currentData() == ALARM_MODE_TOAST
+
+    def _show_toast_alerts(self, alerts: list) -> None:
+        """Wyświetla osobne powiadomienie dla każdego zdarzenia."""
+        shown = 0
+        for alert in alerts:
+            if self._toasts.show_event(
+                alert.client, alert.location_label, alert.incident_id
+            ):
+                shown += 1
+
+        if shown == 0 and alerts:
+            # Powiadomienia zawiodły - lepiej pokazać alarm pełnoekranowy
+            # niż nie zaalarmować wcale.
+            self.log("Powiadomienia niedostępne — używam alarmu pełnoekranowego.")
+            self._alerts.on_new_alerts(alerts)
+            self._start_alarm_sound()
+            return
+
+        self._last_toast_at = time.monotonic()
+        self._start_toast_sound()
+
+    def _start_toast_sound(self) -> None:
+        """Odtwarza dźwięk przez czas odpowiadający wyświetlaniu alarmu.
+
+        Powiadomienie systemowe chowa się samo, w czasie kontrolowanym przez
+        Windows, dlatego dźwięk zatrzymujemy własnym licznikiem - zachowując
+        ten sam rytm co w trybie pełnoekranowym.
+        """
+        if not self.chk_sound.isChecked():
+            return
+        self._sound.play(self._selected_sound_path())
+        self._toast_sound_timer.start(self.sb_display.value() * 1000)
+
+    def _on_toast_acknowledged(self, client: str, incident_id: str) -> None:
+        """Potwierdzenie zdarzenia przez kliknięcie w powiadomienie."""
+        self._sound.stop()
+        self._toast_sound_timer.stop()
+
+        if self._worker is not None and client:
+            self._worker.acknowledge_ids(client, [incident_id] if incident_id else None)
+
+        self.log(f"Potwierdzono zdarzenie — {client}"
+                 + (f" (incydent {incident_id})" if incident_id else ""))
+
+    def _bring_to_front(self) -> None:
+        """Przywraca główne okno programu na wierzch."""
+        self.showNormal()
+        self.raise_()
+        self.activateWindow()
+
+    def _on_alarm_mode_changed(self) -> None:
+        """Przełączenie trybu zamyka to, co aktualnie widoczne."""
+        self._sound.stop()
+        self._toast_sound_timer.stop()
+        self._alerts.force_hide()
+        self._last_toast_at = None
+        self._update_alarm_mode_note()
+
+    def _update_alarm_mode_note(self) -> None:
+        """Ostrzega, gdy wybrano tryb powiadomień bez dostępnego mechanizmu."""
+        if self._toast_mode() and not self._toasts.is_available:
+            self.lbl_alarm_mode_note.setText("⚠ niedostępne — użyty zostanie pełny ekran")
+            self.lbl_alarm_mode_note.setStyleSheet("color: #B06000;")
+        else:
+            self.lbl_alarm_mode_note.setText("")
+
+    def _on_about(self) -> None:
+        credits = [f"<b>Autor:</b> {APP_AUTHOR}"]
+        # Pozycja pojawia się tylko, gdy autor logo został podany -
+        # pusta wartość nie zostawia w oknie osieroconej etykiety.
+        if APP_LOGO_AUTHOR.strip():
+            credits.append(f"<b>Autor logo:</b> {APP_LOGO_AUTHOR}")
+
+        QMessageBox.about(
+            self,
+            f"O programie — {APP_NAME}",
+            f"<b>{APP_NAME}</b><br>"
+            f"wersja {APP_VERSION}<br><br>"
+            f"{APP_DESCRIPTION}<br><br>"
+            + "<br>".join(credits),
+        )
 
     def _on_clients_lost(self, labels: list) -> None:
         """Alarm o zamkniętym środowisku - jednorazowy, bez dźwięku."""
         for label in labels:
             self.log(f"ŚRODOWISKO ZAMKNIĘTE — {label}")
+        if self._toast_mode():
+            shown = sum(1 for label in labels if self._toasts.show_unavailable(label))
+            if shown:
+                return
+            # Powiadomienia zawiodły - pokazujemy alarm pełnoekranowy.
+
         entries = [("Okno SecureVisio zamknięte", label) for label in labels]
         self._overlay.show_alarm(
             entries, self._settings.alarm_display_sec, unavailable=True
@@ -533,7 +689,31 @@ class MainWindow(QMainWindow):
     def _on_reminder_tick(self) -> None:
         if self._worker is None:
             return
-        self._alerts.on_tick(self._worker.active_alerts())
+
+        if self._toast_mode():
+            self._toast_reminder_tick()
+        else:
+            self._alerts.on_tick(self._worker.active_alerts())
+
+    def _toast_reminder_tick(self) -> None:
+        """Ponawia powiadomienia o nieobsłużonych zdarzeniach.
+
+        Windows sam decyduje, kiedy schować powiadomienie, dlatego odstęp
+        przypomnień odliczamy od momentu jego wysłania.
+        """
+        active = self._worker.active_alerts()
+
+        if not active:
+            self._last_toast_at = None
+            return
+
+        if self._last_toast_at is None:
+            self._last_toast_at = time.monotonic()
+            return
+
+        if time.monotonic() - self._last_toast_at >= self.sb_repeat.value():
+            self.log(f"Przypomnienie o {len(active)} nieobsłużonych zdarzeniach.")
+            self._show_toast_alerts(active)
 
     def _on_alarm_dismissed(self) -> None:
         self._sound.stop()
@@ -602,6 +782,12 @@ class MainWindow(QMainWindow):
 
     def _on_test_alarm(self) -> None:
         """Pokazuje przykładowy alarm - do sprawdzenia widoczności na monitorach."""
+        if self._toast_mode() and self._toasts.show_event(
+            "PRZYKŁAD", "Mapa logiczna", "000000"
+        ):
+            self._start_toast_sound()
+            return
+
         self._overlay.show_alarm(
             [("Mapa logiczna", "PRZYKŁAD")], self.sb_display.value()
         )

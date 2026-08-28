@@ -4,3 +4,8 @@ pywin32>=306
 
 # Tylko do uruchamiania testów automatycznych:
 # pytest>=8.0.0
+
+# Powiadomienia systemowe Windows (tryb alarmowania w rogu ekranu):
+winrt-Windows.UI.Notifications>=2.0.0
+winrt-Windows.Data.Xml.Dom>=2.0.0
+winrt-Windows.Foundation>=2.0.0

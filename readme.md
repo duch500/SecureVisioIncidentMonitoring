@@ -1,661 +1,521 @@
-SecureVisio Monitor - Instrukcja użytkownika 
+**SecureVisio Monitor**
 
-# **SecureVisio Monitor** 
+Instrukcja użytkownika
 
-## Instrukcja użytkownika 
+*Program pilnuje wszystkich Twoich środowisk SecureVisio*
 
-_Program pilnuje wszystkich Twoich środowisk SecureVisio i głośno informuje o nowym zdarzeniu_ 
+*i głośno informuje o nowym zdarzeniu*
 
-Instrukcja nie wymaga wiedzy programistycznej 
+Instrukcja nie wymaga wiedzy programistycznej
 
-Strona 1 z 19 
+Spis treści
 
-SecureVisio Monitor - Instrukcja użytkownika 
+1\. Czym jest ten program
 
-## **Spis treści** 
+Kiedy pracujesz z kilkoma środowiskami SecureVisio jednocześnie, łatwo przeoczyć moment, w którym w jednym z nich pojawia się nowe zdarzenie. Trzeba pamiętać, żeby regularnie zaglądać do każdego okna po kolei.
 
-|Spis treści.....................................................................................................................................................1<br>1. Czym jest ten program............................................................................................................................1|
-|---|
-|Co program potraf..................................................................................................................................1|
-|Czego program nie robi........................................................................................................................... 1|
-|Najważniejsza zasada działania...............................................................................................................1|
-|2. Co trzeba przygotować............................................................................................................................1|
-|Dwie wersje programu............................................................................................................................ 1|
-|3. Przygotowanie komputera (tylko wersja źródłowa)................................................................................1|
-|Krok 1 - zainstaluj Pythona...................................................................................................................... 1|
-|Krok 2 - zainstaluj potrzebne dodatki......................................................................................................1|
-|4. Pierwsze uruchomienie i konfguracja.....................................................................................................1|
-|Krok 1 - przygotuj SecureVisio.................................................................................................................1|
-|Krok 2 - uruchom program......................................................................................................................1|
-|Krok 3 - wskaż, gdzie są środowiska........................................................................................................1|
-|Krok 4 - uruchom monitorowanie...........................................................................................................1|
-|Krok 5 - sprawdź alarm............................................................................................................................1|
-|5. Codzienna obsługa...................................................................................................................................1|
-|Rozpoczęcie pracy...................................................................................................................................1|
-|Co widzisz, gdy pojawi się zdarzenie.......................................................................................................1|
-|Zakończenie pracy................................................................................................................................... 1|
-|Przyciski w oknie programu.....................................................................................................................1|
-|6. Ustawienia...............................................................................................................................................1|
-|Ważne: sprawdź frazy przy pierwszym zdarzeniu...................................................................................1|
-|Dodanie własnego dźwięku.....................................................................................................................1|
-|7. Gdy coś nie działa.................................................................................................................................... 1|
-|Środowisko ma stan NIEDOSTĘPNY.........................................................................................................1|
-|Tabela jest pusta po kliknięciu Start........................................................................................................1|
-|Środowisko zniknęło z tabeli i pojawił się pomarańczowy ekran............................................................1|
-|Nie słyszę dźwięku alarmu.......................................................................................................................1|
-|Suwak głośności jest szary i nie działa.....................................................................................................1|
-|Zdarzenie było, ale alarmu nie było.........................................................................................................1|
-|Program w ogóle się nie uruchamia........................................................................................................ 1|
+SecureVisio Monitor robi to za Ciebie. Co kilkanaście sekund sprawdza wszystkie środowiska naraz, a gdy pojawi się nowe zdarzenie --- wyświetla na wszystkich monitorach duży czerwony ekran i odtwarza sygnał dźwiękowy.
 
+Co program potrafi
 
+- Pilnuje jednocześnie wielu środowisk SecureVisio --- dowolnej liczby.
 
-Strona 2 z 19 
+- Działa również wtedy, gdy okna SecureVisio są zminimalizowane lub zasłonięte innymi programami.
 
-|SecureVisio Monitor - Instrukcja użytkownika|
-|---|
-|8. Gdzie szukać informacji........................................................................................................................... 1|
-|Log w oknie programu.............................................................................................................................1|
-|Plik z błędami...........................................................................................................................................1|
-|Tryb diagnostyczny..................................................................................................................................1|
-|9. Aktualizacja programu.............................................................................................................................1|
-|10. Wygodniejsze uruchamianie.................................................................................................................1|
-|Skrót na pulpicie......................................................................................................................................1|
-|Uruchamianie razem z Windows.............................................................................................................1|
-|11. Szybka ściąga......................................................................................................................................... 1|
-|Codzienny start - 4 kroki..........................................................................................................................1|
-|Gdy zabrzmi alarm...................................................................................................................................1|
-|Kolory w tabeli.........................................................................................................................................1|
-|Kolory ekranów alarmu...........................................................................................................................1|
-|Najczęstsza przyczyna problemów..........................................................................................................1|
-|O czym warto pamiętać...........................................................................................................................1|
+- Nie przeszkadza w pracy --- nie przełącza okien i nie zabiera Ci klawiatury.
 
+- Informuje, którego klienta dotyczy zdarzenie.
 
+- Pozwala jednym kliknięciem otworzyć na pełnym ekranie to środowisko, w którym coś się wydarzyło.
 
-Strona 3 z 19 
+- Budzi sygnałem dźwiękowym --- przydatne podczas dyżuru nocnego.
 
-SecureVisio Monitor - Instrukcja użytkownika 
+Czego program nie robi
 
-## **1. Czym jest ten program** 
+- Nie zmienia niczego w systemie SecureVisio --- wyłącznie odczytuje.
 
-Kiedy pracujesz z kilkoma środowiskami SecureVisio jednocześnie, łatwo przeoczyć moment, w którym w jednym z nich pojawia się nowe zdarzenie. Trzeba pamiętać, żeby regularnie zaglądać do każdego okna po kolei. 
+- Nie obsługuje incydentów za Ciebie.
 
-SecureVisio Monitor robi to za Ciebie. Co kilkanaście sekund sprawdza wszystkie środowiska naraz, a gdy pojawi się nowe zdarzenie - wyświetla na wszystkich monitorach duży czerwony ekran i odtwarza sygnał dźwiękowy. 
+- Nie wysyła powiadomień na telefon ani e-mailem.
 
-### **Co program potrafi** 
+- Nie zapisuje historii zdarzeń.
 
-- Pilnuje jednocześnie wielu środowisk SecureVisio - dowolnej liczby. 
+Najważniejsza zasada działania
 
-- Działa również wtedy, gdy okna SecureVisio są zminimalizowane lub zasłonięte innymi programami. 
+Program alarmuje w momencie pojawienia się nowego zdarzenia, a nie przez cały czas, gdy ono istnieje.
 
-- Nie przeszkadza w pracy - nie przełącza okien i nie zabiera Ci klawiatury. 
+Oznacza to, że dostaniesz jeden alarm na jedno zdarzenie. Jeżeli zdarzenie nie zostanie obsłużone, program przypomni o nim po minucie --- chyba że wcześniej klikniesz w ekran alarmu, potwierdzając, że je widzisz. Gdy pojawi się kolejne, nowe zdarzenie, alarm zabrzmi ponownie.
 
-- Informuje, którego klienta dotyczy zdarzenie. 
+2\. Co trzeba przygotować
 
-- Pozwala jednym kliknięciem otworzyć na pełnym ekranie to środowisko, w którym coś się wydarzyło. 
+Zanim zaczniesz, upewnij się, że masz wszystko z poniższej listy.
 
-- Alarmuje sygnałem dźwiękowym (opcjonalne). 
+| **Element** | **Uwagi** |
+|----|----|
+| Komputer z systemem Windows | Program działa tylko na Windows |
+| Zainstalowane środowiska SecureVisio | Te same, których używasz na co dzień |
+| Pliki programu SecureVisio Monitor | Katalog otrzymany od osoby przekazującej program |
+| Około 15 minut na pierwsze uruchomienie | Kolejne uruchomienia zajmują kilka sekund |
 
-### **Czego program nie robi** 
+Nie potrzebujesz uprawnień administratora. Nie potrzebujesz dostępu do internetu --- program działa wyłącznie na Twoim komputerze.
 
-- Nie zmienia niczego w systemie SecureVisio - wyłącznie odczytuje. 
+Dwie wersje programu
 
-- Nie obsługuje incydentów za Ciebie. 
+Program może być przekazany w jednej z dwóch postaci. Sprawdź, którą masz --- od tego zależy, czy wykonujesz rozdział 3.
 
-- Nie wysyła powiadomień na telefon ani e-mailem. 
+| **Co widzisz w katalogu** | **Która to wersja** | **Co zrobić** |
+|----|----|----|
+| Plik SecureVisioMonitor.exe | Wersja gotowa | Pomiń rozdział 3, przejdź do rozdziału 4 |
+| Pliki app.py, requirements.txt i inne | Wersja źródłowa | Wykonaj rozdział 3 |
 
-- Nie zapisuje historii zdarzeń. 
+3\. Przygotowanie komputera (tylko wersja źródłowa)
 
-### **Najważniejsza zasada działania** 
+> Ten rozdział wykonujesz tylko raz i tylko wtedy, gdy w katalogu programu nie ma pliku SecureVisioMonitor.exe. Jeżeli ten plik jest --- przejdź od razu do rozdziału 4.
 
-Program alarmuje w momencie pojawienia się nowego zdarzenia, a nie przez cały czas, gdy ono istnieje. Oznacza to, że dostaniesz jeden alarm na jedno zdarzenie. Jeżeli zdarzenie nie zostanie obsłużone, program przypomni o nim po minucie - chyba że wcześniej klikniesz w ekran alarmu, potwierdzając, że je widzisz. Gdy pojawi się kolejne, nowe zdarzenie, alarm zabrzmi ponownie. 
+Krok 1 --- zainstaluj Pythona
 
-Strona 4 z 19 
+Python to program, który jest potrzebny do uruchomienia monitora. Instaluje się go raz.
 
-SecureVisio Monitor - Instrukcja użytkownika 
+1.  Otwórz przeglądarkę i wejdź na stronę python.org/downloads
 
-## **2. Co trzeba przygotować** 
+2.  Kliknij duży żółty przycisk pobierania.
 
-Zanim zaczniesz, upewnij się, że masz wszystko z poniższej listy. 
+3.  Uruchom pobrany plik.
 
-|**Element**|**Uwagi**|
-|---|---|
-|Komputer z systemem Windows|Program działa tylko na Windows|
-|Zainstalowane środowiska SecureVisio|Te same, których używasz na co dzień|
-|Pliki programu SecureVisio Monitor|Przygotowane zgodnie z instrukcją (Folder na wszystkie środowiska)|
-|Około 15 minut na pierwsze<br>uruchomienie|Kolejne uruchomienia zajmują kilka sekund|
+4.  WAŻNE: na pierwszym ekranie instalatora zaznacz pole „Add python.exe to PATH" na dole okna. Bez tego program się nie uruchomi.
 
+5.  Kliknij „Install Now" i poczekaj na zakończenie.
 
+Sprawdź, czy się udało
 
-Nie potrzebujesz uprawnień administratora. Nie potrzebujesz dostępu do internetu - program działa wyłącznie na Twoim komputerze. 
+1.  Naciśnij klawisze Windows + R.
 
-### **Dwie wersje programu** 
+2.  Wpisz powershell i naciśnij Enter.
 
-Program może być przekazany w jednej z dwóch postaci. Sprawdź, którą masz - od tego zależy, czy wykonujesz rozdział 3. 
+3.  W czarnym oknie wpisz poniższą komendę i naciśnij Enter:
 
-|**Co widzisz w katalogu**|**Która to wersja**|**Co zrobić**|
-|---|---|---|
-|Plik SecureVisioMonitor.exe|Wersja gotowa|Pomiń rozdział 3, przejdź do rozdziału 4|
-|Pliki app.py, requirements.txt i<br>inne|Wersja źródłowa|Wykonaj rozdział 3|
+> python \--version
+>
+> **✔ Powinieneś zobaczyć napis podobny do: Python 3.14.6**
+>
+> Jeżeli zamiast tego pojawia się komunikat, że nie rozpoznano polecenia --- najprawdopodobniej nie zaznaczyłeś pola „Add python.exe to PATH". Uruchom instalator ponownie, wybierz opcję zmiany instalacji (Modify) i zaznacz je.
 
+Krok 2 --- zainstaluj potrzebne dodatki
 
+Program korzysta z kilku dodatkowych komponentów. Pobierzesz je jedną komendą.
 
-Strona 5 z 19 
+1.  Otwórz katalog z plikami programu w Eksploratorze Windows.
 
-SecureVisio Monitor - Instrukcja użytkownika 
+2.  Kliknij prawym przyciskiem myszy na pustym miejscu w tym katalogu, trzymając wciśnięty klawisz Shift.
 
-## **3. Przygotowanie komputera (tylko wersja źródłowa)** 
+3.  Wybierz „Otwórz okno programu PowerShell tutaj" lub „Otwórz w Terminalu".
 
-Ten rozdział wykonujesz tylko raz i tylko wtedy, gdy w katalogu programu nie ma pliku SecureVisioMonitor.exe. Jeżeli ten plik jest - przejdź od razu do rozdziału 4. 
+4.  Wklej poniższą komendę i naciśnij Enter:
 
-### **Krok 1 - zainstaluj Pythona** 
+> python -m pip install -r requirements.txt
 
-Python to program, który jest potrzebny do uruchomienia monitora. Instaluje się go raz. 
+5.  Poczekaj --- instalacja trwa kilka minut i wypisuje dużo tekstu. To normalne.
 
-1. Otwórz przeglądarkę i wejdź na stronę python.org/downloads 
+> **✔ Na końcu powinien pojawić się napis zaczynający się od: Successfully installed**
 
-2. Kliknij duży żółty przycisk pobierania. 
+4\. Pierwsze uruchomienie i konfiguracja
 
-3. Uruchom pobrany plik. 
+Krok 1 --- przygotuj SecureVisio
 
-4. WAŻNE: na pierwszym ekranie instalatora zaznacz pole „Add python.exe to PATH” na dole okna. Bez tego program się nie uruchomi. 
+Zanim uruchomisz monitor, przygotuj środowiska, które ma pilnować.
 
-5. Kliknij „Install Now” i poczekaj na zakończenie. 
+1.  Uruchom wszystkie środowiska SecureVisio, które chcesz monitorować.
 
-#### **Sprawdź, czy się udało** 
+2.  W każdym z nich kliknij pozycję „Incydenty" w menu po lewej stronie.
 
-1. Naciśnij klawisze Windows + R. 
+> To bardzo ważne. Program odczytuje dane z listy incydentów. Jeżeli okno SecureVisio pokazuje mapę sieci albo szczegóły pojedynczego incydentu, monitor nie będzie w stanie nic odczytać z tego środowiska.
+>
+> Po ustawieniu widoku możesz spokojnie zminimalizować okna SecureVisio --- program czyta je również wtedy, gdy są zminimalizowane. Widok musi być ustawiony w momencie uruchamiania monitorowania.
 
-2. Wpisz powershell i naciśnij Enter. 
+Krok 2 --- uruchom program
 
-3. W czarnym oknie wpisz poniższą komendę i naciśnij Enter: 
+Zależnie od posiadanej wersji:
 
-<mark>python --version</mark> 
+| **Wersja** | **Jak uruchomić**                              |
+|------------|------------------------------------------------|
+| Gotowa     | Kliknij dwukrotnie plik SecureVisioMonitor.exe |
+| Źródłowa   | Kliknij dwukrotnie plik Uruchom.bat            |
 
-- **✔  Powinieneś zobaczyć napis podobny do: Python 3.14.6** 
+> **✔ Powinno otworzyć się okno o nazwie „SecureVisio Monitor" z pustą tabelą u góry.**
+>
+> Wersja gotowa (.exe) uruchamia się przez kilka sekund --- to normalne, plik rozpakowuje się przed startem. Nie klikaj wielokrotnie.
 
-Jeżeli zamiast tego pojawia się komunikat, że nie rozpoznano polecenia - najprawdopodobniej nie zaznaczyłeś pola „Add python.exe to PATH”. Uruchom instalator ponownie, wybierz opcję zmiany instalacji (Modify) i zaznacz je. 
+Krok 3 --- wskaż, gdzie są środowiska
 
-### **Krok 2 - zainstaluj potrzebne dodatki** 
+Program musi wiedzieć, gdzie na dysku znajdują się Twoje środowiska SecureVisio, żeby rozpoznać, które okno należy do którego klienta.
 
-Program korzysta z kilku dodatkowych komponentów. Pobierzesz je jedną komendą. 
+1.  Otwórz Eksplorator Windows i znajdź katalog, w którym trzymasz środowiska SecureVisio.
 
-1. Otwórz katalog z plikami programu w Eksploratorze Windows. 
+2.  Wejdź o jeden poziom wyżej --- tak, żeby widzieć katalogi z nazwami klientów obok siebie.
 
-2. Kliknij prawym przyciskiem myszy na pustym miejscu w tym katalogu, trzymając wciśnięty klawisz Shift. 
+3.  Kliknij w pasek adresu Eksploratora i skopiuj ścieżkę (Ctrl+C).
 
-3. Wybierz „Otwórz okno programu PowerShell tutaj” lub „Otwórz w Terminalu”. 
+4.  Wklej ją w oknie programu w pole „Katalog środowisk".
 
-4. Wklej poniższą komendę i naciśnij Enter: 
+Przykład: jeżeli Twoje środowiska wyglądają tak:
 
-<mark>python -m pip install -r requirements.txt</mark> 
+> C:\SecureVisio\Klient A\\..
+>
+> C:\SecureVisio\Klient B\\..
+>
+> C:\SecureVisio\Klient C\\..
 
-5. Poczekaj - instalacja trwa kilka minut i wypisuje dużo tekstu. To normalne. 
+to w pole wpisujesz:
 
-- **✔  Na końcu powinien pojawić się napis zaczynający się od: Successfully installed** 
+> C:\SecureVisio
+>
+> Nazwy klientów, które zobaczysz później na alarmie, biorą się z nazw tych katalogów. W przykładzie powyżej będą to: Klient A, Klient B, Klient C.
 
-Strona 6 z 19 
+Krok 4 --- uruchom monitorowanie
 
-SecureVisio Monitor - Instrukcja użytkownika 
+Kliknij przycisk „Start" na dole okna.
 
-## **4. Pierwsze uruchomienie i konfiguracja** 
+> **✔ W tabeli powinny pojawić się wiersze --- po jednym na każde środowisko --- z zielonym tłem i napisem OK.**
 
-### **Krok 1 - przygotuj SecureVisio** 
+Sprawdź, czy wszystko się zgadza:
 
-Zanim uruchomisz monitor, przygotuj środowiska, które ma pilnować. 
+| **Kolumna**    | **Co powinna pokazywać**                           |
+|----------------|----------------------------------------------------|
+| Klient         | Nazwę środowiska, na przykład Klient A             |
+| Stan           | OK na zielonym tle                                 |
+| Ostatni odczyt | Aktualną godzinę                                   |
+| Incydenty      | Liczbę incydentów widoczną na liście w SecureVisio |
+| Czas odczytu   | Ułamek sekundy, zwykle 0,3--0,7 s                  |
+| Uwagi          | Pusto (albo informację o zminimalizowanym oknie)   |
 
-1. Uruchom wszystkie środowiska SecureVisio, które chcesz monitorować. 
+> Jeżeli któreś środowisko ma stan NIEDOSTĘPNY na pomarańczowym tle --- najczęściej oznacza to, że nie jest ustawione na widoku listy incydentów. Wróć do kroku 1, ustaw widok i kliknij „Sprawdź teraz".
 
-2. W każdym z nich kliknij pozycję „Incydenty” w menu po lewej stronie. 
+Krok 5 --- sprawdź alarm
 
-To bardzo ważne. Program odczytuje dane z listy incydentów. Jeżeli okno SecureVisio pokazuje mapę sieci albo szczegóły pojedynczego incydentu, monitor nie będzie w stanie nic odczytać z tego środowiska. 
+Zanim zdasz się na program, przekonaj się, że alarm działa i jest dla Ciebie widoczny.
 
-Po ustawieniu widoku możesz spokojnie zminimalizować okna SecureVisio - program czyta je również wtedy, gdy są zminimalizowane. Widok musi być ustawiony w momencie uruchamiania monitorowania. 
+1.  Kliknij przycisk „Testuj alarm" w prawym dolnym rogu.
 
-### **Krok 2 - uruchom program** 
+2.  Na wszystkich monitorach powinien pojawić się czerwony ekran z napisem NOWE ZDARZENIE.
 
-Zależnie od posiadanej wersji: 
+3.  Kliknij w dowolne miejsce, żeby go zamknąć.
 
-|**Wersja**|**Jak uruchomić**|
-|---|---|
-|Gotowa|Kliknij dwukrotnie plik SecureVisioMonitor.exe|
-|Źródłowa|Kliknij dwukrotnie plik Uruchom.bat|
+> **✔ Alarm pojawił się na każdym monitorze i zniknął po kliknięciu.**
 
+Sprawdź też dźwięk --- kliknij przycisk „Odtwórz" obok listy dźwięków. Kliknij ponownie, żeby przerwać.
 
+> Ustaw głośność tak, żeby alarm był słyszalny również wtedy, gdy odejdziesz od biurka. Jeżeli planujesz dyżur nocny, sprawdź to przy nocnych ustawieniach głośności komputera.
 
-- **✔  Powinno otworzyć się okno o nazwie „SecureVisio Monitor” z pustą tabelą u góry.** 
+5\. Codzienna obsługa
 
-Wersja gotowa (.exe) uruchamia się przez kilka sekund - to normalne, plik rozpakowuje się przed startem. Nie klikaj wielokrotnie. 
+Rozpoczęcie pracy
 
-### **Krok 3 - wskaż, gdzie są środowiska** 
+1.  Uruchom środowiska SecureVisio i ustaw w każdym widok „Incydenty".
 
-Program musi wiedzieć, gdzie na dysku znajdują się Twoje środowiska SecureVisio, żeby rozpoznać, które okno należy do którego klienta. 
+2.  Uruchom SecureVisio Monitor.
 
-1. Otwórz Eksplorator Windows i znajdź katalog, w którym trzymasz środowiska SecureVisio. 
+3.  Kliknij „Start".
 
-2. Wejdź o jeden poziom wyżej - tak, żeby widzieć katalogi z nazwami klientów obok siebie. 
+4.  Sprawdź, czy wszystkie środowiska mają stan OK.
 
-3. Kliknij w pasek adresu Eksploratora i skopiuj ścieżkę (Ctrl+C). 
+> Uruchomienie programu nie rozpoczyna monitorowania automatycznie. Trzeba kliknąć „Start". Jeżeli tego nie zrobisz, program będzie otwarty, ale nic nie będzie pilnował.
 
-4. Wklej ją w oknie programu w pole „Katalog środowisk”. 
+Co widzisz, gdy pojawi się zdarzenie
 
-Przykład: jeżeli Twoje środowiska wyglądają tak: 
+Na wszystkich monitorach wyświetli się czerwony ekran z napisem NOWE ZDARZENIE, a pod nim lista --- miejsce zdarzenia i nazwa klienta. Jednocześnie zabrzmi sygnał dźwiękowy.
 
-<mark>C:\SecureVisio\\...</mark> C:\SecureVisio\\... 
+Masz dwie możliwości:
 
-C:\SecureVisio\\... 
+| **Co robisz** | **Co się dzieje** |
+|----|----|
+| Klikasz w tło ekranu (poza przyciskami) | Alarm znika, dźwięk milknie. Program uznaje, że widziałeś zdarzenie i nie będzie o nim przypominał. Okna SecureVisio pozostają nietknięte. |
+| Klikasz przycisk „Pokaż" przy danej pozycji | To środowisko SecureVisio otwiera się na pełnym ekranie, żebyś od razu widział incydent. |
+| Nie robisz nic | Alarm znika po 10 sekundach, ale wróci po minucie, dopóki zdarzenie nie zostanie obsłużone. |
 
-Strona 7 z 19 
+> Gdy alarm dotyczy kilku środowisk naraz, kliknięcie „Pokaż" przy jednym z nich otwiera to środowisko, a alarm pozostaje widoczny na pozostałych monitorach --- możesz zająć się nimi po kolei.
 
-SecureVisio Monitor - Instrukcja użytkownika 
+Zakończenie pracy
 
-#### to w pole wpisujesz: 
+Kliknij „Stop", żeby wstrzymać monitorowanie, albo zamknij okno programu krzyżykiem --- ustawienia zapiszą się automatycznie.
 
-##### <mark>C:\SecureVisio</mark> 
+> Zamknięcie programu kasuje pamięć o potwierdzonych zdarzeniach. Po ponownym uruchomieniu nieobsłużone zdarzenia mogą wywołać alarm jeszcze raz. Jeżeli Ci to przeszkadza, odznacz pole „Alarmuj o zdarzeniach zastanych przy starcie".
 
-Nazwy klientów, które zobaczysz później na alarmie, biorą się z nazw tych katalogów. W przykładzie powyżej będą to: , , . 
+Przyciski w oknie programu
 
-### **Krok 4 - uruchom monitorowanie** 
+| **Przycisk**   | **Do czego służy**                                        |
+|----------------|-----------------------------------------------------------|
+| Start          | Rozpoczyna monitorowanie                                  |
+| Stop           | Wstrzymuje monitorowanie                                  |
+| Sprawdź teraz  | Sprawdza wszystkie środowiska natychmiast, bez czekania   |
+| Testuj alarm   | Pokazuje przykładowy alarm --- do sprawdzenia widoczności |
+| Dodaj plik\... | Dodaje własny dźwięk alarmu                               |
+| Odtwórz        | Odtwarza wybrany dźwięk, żebyś mógł go posłuchać          |
 
-Kliknij przycisk „Start” na dole okna. 
+6\. Ustawienia
 
-- **✔  W tabeli powinny pojawić się wiersze - po jednym na każde środowisko - z zielonym tłem i napisem OK.** 
+Wszystkie ustawienia znajdują się w środkowej części okna i zapisują się automatycznie.
 
-#### Sprawdź, czy wszystko się zgadza: 
+| **Ustawienie** | **Co oznacza** | **Kiedy zmieniać** |
+|----|----|----|
+| Katalog środowisk | Miejsce na dysku, gdzie trzymasz środowiska SecureVisio | Gdy przeniesiesz środowiska w inne miejsce |
+| Frazy nowego zdarzenia | Napisy w kolumnie Status, na które program ma reagować | Gdy Twoje SecureVisio używa innego napisu (patrz niżej) |
+| Interwał | Co ile sekund program sprawdza środowiska | Rzadko --- domyślne 10 s jest bezpieczne |
+| Alarm widoczny | Ile sekund wyświetla się czerwony ekran | Gdy 10 sekund to dla Ciebie za krótko lub za długo |
+| Przypomnienie po | Po ilu sekundach alarm wraca, jeśli go nie potwierdzisz | Gdy chcesz częstsze lub rzadsze przypomnienia |
+| Alarmuj o zdarzeniach zastanych | Czy alarmować o zdarzeniach istniejących już przy starcie | Odznacz, jeśli restart programu ma nie powtarzać alarmów |
+| Tryb diagnostyczny | Zapisuje szczegółowe informacje do pliku | Tylko gdy szukasz przyczyny problemu |
+| Dźwięk alarmu | Włącza sygnał dźwiękowy i pozwala wybrać plik | Odznacz, gdy pracujesz w ciszy |
+| Głośność | Głośność sygnału względem głośności systemu | Ustaw raz, na początku |
 
-|**Kolumna**|**Co powinna pokazywać**|
-|---|---|
-|Klient|Nazwę środowiska, na przykład |
-|Stan|OK na zielonym tle|
-|Ostatni odczyt|Aktualną godzinę|
-|Incydenty|Liczbę incydentów widoczną na liście w SecureVisio|
-|Czas odczytu|Ułamek sekundy, zwykle 0,3-0,7 s|
-|Uwagi|Pusto (albo informację o zminimalizowanym oknie)|
+Ważne: sprawdź frazy przy pierwszym zdarzeniu
 
+> Program szuka w kolumnie Status napisów „Nowe Zdarzenie" oraz „New Event". Nie zostało potwierdzone, że Twoja wersja SecureVisio używa dokładnie takich napisów. Przy pierwszym prawdziwym incydencie porównaj napis w kolumnie Status z tym, co masz wpisane w polu „Frazy nowego zdarzenia". Jeżeli się różnią --- dopisz właściwy napis, oddzielając go średnikiem.
 
+Przykład, gdy Twoje SecureVisio pokazuje status „Nowy":
 
-Jeżeli któreś środowisko ma stan NIEDOSTĘPNY na pomarańczowym tle - najczęściej oznacza to, że nie jest ustawione na widoku listy incydentów. Wróć do kroku 1, ustaw widok i kliknij „Sprawdź teraz”. 
+> Nowe Zdarzenie; New Event; Nowy
 
-### **Krok 5 - sprawdź alarm** 
+Po zmianie kliknij „Stop", a następnie „Start", żeby ustawienie zaczęło obowiązywać.
 
-Zanim zdasz się na program, przekonaj się, że alarm działa i jest dla Ciebie widoczny. 
+Dodanie własnego dźwięku
 
-1. Kliknij przycisk „Testuj alarm” w prawym dolnym rogu. 
+1.  Przygotuj plik dźwiękowy w formacie WAV (inne formaty nie są obsługiwane).
 
-2. Na wszystkich monitorach powinien pojawić się czerwony ekran z napisem NOWE ZDARZENIE. 
+2.  Kliknij „Dodaj plik\..." i wskaż go.
 
-3. Kliknij w dowolne miejsce, żeby go zamknąć. 
+3.  Plik zostanie skopiowany do programu i pojawi się na liście.
 
-- **✔  Alarm pojawił się na każdym monitorze i zniknął po kliknięciu.** 
+4.  Wybierz go z listy i kliknij „Odtwórz", żeby sprawdzić.
 
-Sprawdź też dźwięk - kliknij przycisk „Odtwórz” obok listy dźwięków. Kliknij ponownie, żeby przerwać. 
+> Plik jest kopiowany do programu, więc możesz spokojnie usunąć oryginał --- alarm będzie działał dalej.
 
-Ustaw głośność tak, żeby alarm był słyszalny również wtedy, gdy odejdziesz od biurka. Jeżeli planujesz dyżur nocny, sprawdź to przy nocnych ustawieniach głośności komputera. 
+7\. Gdy coś nie działa
 
-Strona 8 z 19 
+Środowisko ma stan NIEDOSTĘPNY
 
-SecureVisio Monitor - Instrukcja użytkownika 
+*Co widzisz: Wiersz w tabeli jest pomarańczowy, w kolumnie Uwagi widnieje komunikat o błędzie.*
 
-## **5. Codzienna obsługa** 
+Dlaczego: Najczęściej to okno SecureVisio nie jest ustawione na widoku listy incydentów. Program nie ma wtedy skąd odczytać danych.
 
-### **Rozpoczęcie pracy** 
+Co zrobić
 
-1. Uruchom środowiska SecureVisio i ustaw w każdym widok „Incydenty”. 
+1.  Przejdź do tego okna SecureVisio.
 
-2. Uruchom SecureVisio Monitor. 
+2.  Kliknij „Incydenty" w menu po lewej stronie.
 
-3. Kliknij „Start”. 
+3.  Wróć do monitora i kliknij „Sprawdź teraz".
 
-4. Sprawdź, czy wszystkie środowiska mają stan OK. 
+> **✔ Wiersz zmienia kolor na zielony, a stan na OK.**
 
-Uruchomienie programu nie rozpoczyna monitorowania automatycznie. Trzeba kliknąć „Start”. Jeżeli tego nie zrobisz, program będzie otwarty, ale nic nie będzie pilnował. 
+Tabela jest pusta po kliknięciu Start
 
-### **Co widzisz, gdy pojawi się zdarzenie** 
+*Co widzisz: Po uruchomieniu monitorowania nie pojawia się żaden wiersz, a pod tabelą widnieje „Monitorowane: 0/0".*
 
-Na wszystkich monitorach wyświetli się czerwony ekran z napisem NOWE ZDARZENIE, a pod nim lista - miejsce zdarzenia i nazwa klienta. Jednocześnie zabrzmi sygnał dźwiękowy. 
+Dlaczego: Program nie rozpoznał żadnego okna SecureVisio. Zwykle oznacza to źle wpisany katalog środowisk.
 
-Masz dwie możliwości: 
+Co zrobić
 
-|**Co robisz**|**Co się dzieje**|
-|---|---|
-|Klikasz w tło ekranu (poza<br>przyciskami)|Alarm znika, dźwięk milknie. Program uznaje, że widziałeś zdarzenie i nie<br>będzie o nim przypominał. Okna SecureVisio pozostają nietknięte.|
-|Klikasz przycisk „Pokaż” przy danej<br>pozycji|To środowisko SecureVisio otwiera się na pełnym ekranie, żebyś od razu<br>widział incydent.|
-|Nie robisz nic|Alarm znika po 10 sekundach, ale wróci po minucie, dopóki zdarzenie nie<br>zostanie obsłużone.|
+1.  Sprawdź, czy środowiska SecureVisio są w ogóle uruchomione.
 
+2.  Sprawdź pole „Katalog środowisk" --- musi wskazywać katalog NADRZĘDNY, w którym leżą katalogi klientów, a nie katalog jednego klienta.
 
+3.  Popraw ścieżkę, kliknij „Stop", a potem „Start".
 
-Gdy alarm dotyczy kilku środowisk naraz, kliknięcie „Pokaż” przy jednym z nich otwiera to środowisko, a alarm pozostaje widoczny na pozostałych monitorach - możesz zająć się nimi po kolei. 
+> **✔ W tabeli pojawiają się wiersze wszystkich środowisk.**
 
-### **Zakończenie pracy** 
+Środowisko zniknęło z tabeli i pojawił się pomarańczowy ekran
 
-Kliknij „Stop”, żeby wstrzymać monitorowanie, albo zamknij okno programu krzyżykiem - ustawienia zapiszą się automatycznie. 
+*Co widzisz: Ekran z napisem ŚRODOWISKO ZAMKNIĘTE i nazwą klienta.*
 
-Zamknięcie programu kasuje pamięć o potwierdzonych zdarzeniach. Po ponownym uruchomieniu nieobsłużone zdarzenia mogą wywołać alarm jeszcze raz. Jeżeli Ci to przeszkadza, odznacz pole „Alarmuj o zdarzeniach zastanych przy starcie”. 
+Dlaczego: Okno SecureVisio zostało zamknięte lub przestało odpowiadać. Program informuje, że przestał je pilnować.
 
-### **Przyciski w oknie programu** 
+Co zrobić
 
-Strona 9 z 19 
+1.  Kliknij w ekran, żeby go zamknąć.
 
-SecureVisio Monitor - Instrukcja użytkownika 
+2.  Jeżeli zamknąłeś to środowisko celowo --- nic więcej nie musisz robić.
 
-|**Przycisk**|**Do czego służy**|
-|---|---|
-|Start|Rozpoczyna monitorowanie|
-|Stop|Wstrzymuje monitorowanie|
-|Sprawdź teraz|Sprawdza wszystkie środowiska natychmiast, bez czekania|
-|Testuj alarm|Pokazuje przykładowy alarm - do sprawdzenia widoczności|
-|Dodaj plik...|Dodaje własny dźwięk alarmu|
-|Odtwórz|Odtwarza wybrany dźwięk, żebyś mógł go posłuchać|
+3.  Jeżeli nie --- uruchom SecureVisio ponownie, ustaw widok „Incydenty". Program sam je wykryje i wznowi monitorowanie.
 
+> **✔ W polu „Log bieżący" pojawia się wpis, że środowisko wróciło.**
 
+Nie słyszę dźwięku alarmu
 
-Strona 10 z 19 
+*Co widzisz: Czerwony ekran się pojawia, ale bez dźwięku.*
 
-SecureVisio Monitor - Instrukcja użytkownika 
+Dlaczego: Dźwięk może być wyłączony w programie, wyciszony w systemie albo ustawiony na zbyt niski poziom.
 
-## **6. Ustawienia** 
+Co zrobić
 
-Wszystkie ustawienia znajdują się w środkowej części okna i zapisują się automatycznie. 
+1.  Sprawdź, czy pole „Dźwięk alarmu" jest zaznaczone.
 
-|**Ustawienie**|**Co oznacza**|**Kiedy zmieniać**|
-|---|---|---|
-|Katalog środowisk|Miejsce na dysku, gdzie trzymasz<br>środowiska SecureVisio|Gdy przeniesiesz środowiska w inne<br>miejsce|
-|Frazy nowego zdarzenia|Napisy w kolumnie Status, na które<br>program ma reagować|Gdy Twoje SecureVisio używa innego<br>napisu (patrz niżej)|
-|Interwał|Co ile sekund program sprawdza<br>środowiska|Rzadko - domyślne 30 s jest<br>bezpieczne|
-|Alarm widoczny|Ile sekund wyświetla się czerwony ekran|Gdy 10 sekund to dla Ciebie za krótko<br>lub za długo|
-|Przypomnienie po|Po ilu sekundach alarm wraca, jeśli go nie<br>potwierdzisz|Gdy chcesz częstsze lub rzadsze<br>przypomnienia|
-|Alarmuj o zdarzeniach<br>zastanych|Czy alarmować o zdarzeniach istniejących<br>już przy starcie|Odznacz, jeśli restart programu ma nie<br>powtarzać alarmów|
-|Tryb diagnostyczny|Zapisuje szczegółowe informacje do pliku|Tylko gdy szukasz przyczyny problemu|
-|Dźwięk alarmu|Włącza sygnał dźwiękowy i pozwala<br>wybrać plik|Odznacz, gdy pracujesz w ciszy|
-|Głośność|Głośność sygnału względem głośności<br>systemu|Ustaw raz, na początku|
+2.  Kliknij „Odtwórz" --- jeżeli nic nie słychać, problem jest w dźwięku, nie w alarmie.
 
+3.  Sprawdź głośność systemu Windows (ikona głośnika przy zegarze) i mikser głośności.
 
+4.  Przesuń suwak głośności w programie w prawo.
 
-### **Ważne: sprawdź frazy przy pierwszym zdarzeniu** 
+> **✔ Po kliknięciu „Odtwórz" słychać sygnał alarmowy.**
 
-Program szuka w kolumnie Status napisów „Nowe Zdarzenie” oraz „New Event”. Nie zostało potwierdzone, że Twoja wersja SecureVisio używa dokładnie takich napisów. Przy pierwszym prawdziwym incydencie porównaj napis w kolumnie Status z tym, co masz wpisane w polu „Frazy nowego zdarzenia”. Jeżeli się różnią - dopisz właściwy napis, oddzielając go średnikiem. 
+Suwak głośności jest szary i nie działa
 
-Przykład, gdy Twoje SecureVisio pokazuje status „Nowy”: 
+*Co widzisz: Obok suwaka widnieje napis „sys." zamiast wartości procentowej.*
 
-<mark>Nowe Zdarzenie; New Event; Nowy</mark> 
+Dlaczego: Brakuje komponentu odpowiedzialnego za regulację głośności. Dźwięk działa, ale sterujesz nim głośnością systemu.
 
-Po zmianie kliknij „Stop”, a następnie „Start”, żeby ustawienie zaczęło obowiązywać. 
+Co zrobić
 
-### **Dodanie własnego dźwięku** 
+1.  Steruj głośnością przez ikonę głośnika w Windows --- to w pełni wystarcza.
 
-1. Przygotuj plik dźwiękowy w formacie WAV (inne formaty nie są obsługiwane). 
+2.  Jeżeli chcesz przywrócić suwak, zgłoś to osobie, która przekazała Ci program.
 
-2. Kliknij „Dodaj plik...” i wskaż go. 
+> **✔ Dźwięk alarmu jest słyszalny na odpowiednim poziomie.**
 
-3. Plik zostanie skopiowany do programu i pojawi się na liście. 
+Zdarzenie było, ale alarmu nie było
 
-4. Wybierz go z listy i kliknij „Odtwórz”, żeby sprawdzić. 
+*Co widzisz: W SecureVisio widać nowe zdarzenie, monitor pokazywał OK i nie zaalarmował.*
 
-Strona 11 z 19 
+Dlaczego: Najprawdopodobniej Twoje SecureVisio używa innego napisu statusu niż ten wpisany w ustawieniach programu.
 
-SecureVisio Monitor - Instrukcja użytkownika 
+Co zrobić
 
-<mark>Plik jest kopiowany do programu, więc możesz spokojnie usunąć oryginał - alarm będzie działał dalej.</mark> 
+1.  Otwórz SecureVisio i przepisz dokładnie napis z kolumny Status dla tego zdarzenia.
 
-Strona 12 z 19 
+2.  Porównaj go z zawartością pola „Frazy nowego zdarzenia" w monitorze.
 
-SecureVisio Monitor - Instrukcja użytkownika 
+3.  Jeżeli się różnią, dopisz właściwy napis po średniku.
 
-## **7. Gdy coś nie działa** 
+4.  Kliknij „Stop", a potem „Start".
 
-### **Środowisko ma stan NIEDOSTĘPNY** 
+> **✔ Przy kolejnym zdarzeniu alarm pojawia się poprawnie.**
 
-_Co widzisz: Wiersz w tabeli jest pomarańczowy, w kolumnie Uwagi widnieje komunikat o błędzie._ 
+Program w ogóle się nie uruchamia
 
-Dlaczego: Najczęściej to okno SecureVisio nie jest ustawione na widoku listy incydentów. Program nie ma wtedy skąd odczytać danych. 
+*Co widzisz: Podwójne kliknięcie nic nie daje albo pojawia się i znika czarne okno.*
 
-#### **Co zrobić** 
+Dlaczego: W wersji źródłowej zwykle oznacza to brak Pythona lub niezainstalowane dodatki.
 
-1. Przejdź do tego okna SecureVisio. 
+Co zrobić
 
-2. Kliknij „Incydenty” w menu po lewej stronie. 
+1.  Sprawdź, czy wykonałeś oba kroki z rozdziału 3.
 
-3. Wróć do monitora i kliknij „Sprawdź teraz”. 
+2.  Otwórz PowerShell w katalogu programu i uruchom go tak, żeby zobaczyć komunikat błędu:
 
-- **✔  Wiersz zmienia kolor na zielony, a stan na OK.** 
+> python app.py
 
-### **Tabela jest pusta po kliknięciu Start** 
+3.  Zanotuj treść błędu i przekaż ją osobie, która udostępniła Ci program.
 
-_Co widzisz: Po uruchomieniu monitorowania nie pojawia się żaden wiersz, a pod tabelą widnieje „Monitorowane: 0/0”._ 
+> **✔ Otwiera się okno „SecureVisio Monitor".**
 
-Dlaczego: Program nie rozpoznał żadnego okna SecureVisio. Zwykle oznacza to źle wpisany katalog środowisk. 
+8\. Gdzie szukać informacji
 
-#### **Co zrobić** 
+Log w oknie programu
 
-1. Sprawdź, czy środowiska SecureVisio są w ogóle uruchomione. 
+Pole „Log bieżący" na dole okna pokazuje, co program robił: kiedy wykrył zdarzenie, kiedy je potwierdziłeś, kiedy środowisko zniknęło lub wróciło. To pierwsze miejsce, do którego warto zajrzeć.
 
-2. Sprawdź pole „Katalog środowisk” - musi wskazywać katalog NADRZĘDNY, w którym leżą katalogi klientów, a nie katalog jednego klienta. 
+Log czyści się przy zamknięciu programu --- jeżeli chcesz coś zachować, zaznacz tekst i skopiuj.
 
-3. Popraw ścieżkę, kliknij „Stop”, a potem „Start”. 
+Plik z błędami
 
-- **✔  W tabeli pojawiają się wiersze wszystkich środowisk.** 
+Program zapisuje błędy do pliku:
 
-### **Środowisko zniknęło z tabeli i pojawił się pomarańczowy ekran** 
+> logs\monitor.log
 
-_Co widzisz: Ekran z napisem ŚRODOWISKO ZAMKNIĘTE i nazwą klienta._ 
+Znajdziesz go w katalogu programu. Otwórz go Notatnikiem.
 
-Dlaczego: Okno SecureVisio zostało zamknięte lub przestało odpowiadać. Program informuje, że przestał je pilnować. 
+> Pusty plik albo jego brak to dobra wiadomość --- oznacza, że nie wystąpił żaden błąd. Program zapisuje tam wyłącznie problemy, a nie normalną pracę.
 
-#### **Co zrobić** 
+Tryb diagnostyczny
 
-1. Kliknij w ekran, żeby go zamknąć. 
+Gdy trzeba zbadać problem dokładniej, zaznacz pole „Tryb diagnostyczny (szczegółowe logi)". Program zacznie zapisywać znacznie więcej informacji.
 
-2. Jeżeli zamknąłeś to środowisko celowo - nic więcej nie musisz robić. 
+> Po zakończeniu diagnostyki odznacz to pole. W trybie diagnostycznym do pliku trafiają także dane incydentów --- ich numery i statusy --- a plik szybko się zapełnia.
 
-3. Jeżeli nie - uruchom SecureVisio ponownie, ustaw widok „Incydenty”. Program sam je wykryje i wznowi monitorowanie. 
+9\. Aktualizacja programu
 
-- **✔  W polu „Log bieżący” pojawia się wpis, że środowisko wróciło.** 
+Program nie aktualizuje się sam. Gdy otrzymasz nową wersję:
 
-Strona 13 z 19 
+1.  Zamknij program.
 
-SecureVisio Monitor - Instrukcja użytkownika 
+2.  Zrób kopię pliku settings.json z katalogu programu --- zawiera Twoje ustawienia. Wystarczy skopiować go na pulpit.
 
-### **Nie słyszę dźwięku alarmu** 
+3.  Jeżeli masz własne dźwięki, skopiuj też katalog sounds.
 
-_Co widzisz: Czerwony ekran się pojawia, ale bez dźwięku._ 
+4.  Zastąp pliki programu nowymi.
 
-Dlaczego: Dźwięk może być wyłączony w programie, wyciszony w systemie albo ustawiony na zbyt niski poziom. 
+5.  Uruchom program i sprawdź, czy ustawienia są na miejscu.
 
-#### **Co zrobić** 
+> Ustawienia zwykle zachowują się same, bo plik settings.json nie jest nadpisywany przez nową wersję. Kopia to zabezpieczenie na wszelki wypadek.
 
-1. Sprawdź, czy pole „Dźwięk alarmu” jest zaznaczone. 
+10\. Wygodniejsze uruchamianie
 
-2. Kliknij „Odtwórz” - jeżeli nic nie słychać, problem jest w dźwięku, nie w alarmie. 
+Skrót na pulpicie
 
-3. Sprawdź głośność systemu Windows (ikona głośnika przy zegarze) i mikser głośności. 
+1.  Znajdź plik, którym uruchamiasz program (SecureVisioMonitor.exe lub Uruchom.bat).
 
-4. Przesuń suwak głośności w programie w prawo. 
+2.  Kliknij go prawym przyciskiem myszy.
 
-- **✔  Po kliknięciu „Odtwórz” słychać sygnał alarmowy.** 
+3.  Wybierz „Pokaż więcej opcji", a następnie „Wyślij do" → „Pulpit (utwórz skrót)".
 
-### **Suwak głośności jest szary i nie działa** 
+> **✔ Na pulpicie pojawia się skrót, którym uruchomisz program jednym dwuklikiem.**
 
-_Co widzisz: Obok suwaka widnieje napis „sys.” zamiast wartości procentowej._ 
+Uruchamianie razem z Windows
 
-Dlaczego: Brakuje komponentu odpowiedzialnego za regulację głośności. Dźwięk działa, ale sterujesz nim głośnością systemu. 
+1.  Naciśnij Windows + R.
 
-#### **Co zrobić** 
+2.  Wpisz shell:startup i naciśnij Enter.
 
-1. Steruj głośnością przez ikonę głośnika w Windows - to w pełni wystarcza. 
+3.  Przeciągnij do otwartego katalogu skrót do programu.
 
-2. Jeżeli chcesz przywrócić suwak, zgłoś to osobie, która przekazała Ci program. 
+> Program uruchomi się sam po zalogowaniu, ale nadal trzeba kliknąć „Start", żeby rozpocząć monitorowanie. Automatyczne rozpoczynanie nie jest dostępne.
 
-- **✔  Dźwięk alarmu jest słyszalny na odpowiednim poziomie.** 
+11\. Szybka ściąga
 
-### **Zdarzenie było, ale alarmu nie było** 
+Codzienny start --- 4 kroki
 
-_Co widzisz: W SecureVisio widać nowe zdarzenie, monitor pokazywał OK i nie zaalarmował._ 
+1.  Uruchom środowiska SecureVisio.
 
-Dlaczego: Najprawdopodobniej Twoje SecureVisio używa innego napisu statusu niż ten wpisany w ustawieniach programu. 
+2.  W każdym kliknij „Incydenty".
 
-#### **Co zrobić** 
+3.  Uruchom SecureVisio Monitor.
 
-1. Otwórz SecureVisio i przepisz dokładnie napis z kolumny Status dla tego zdarzenia. 
+4.  Kliknij „Start" i sprawdź, czy wszystkie wiersze są zielone.
 
-2. Porównaj go z zawartością pola „Frazy nowego zdarzenia” w monitorze. 
+Gdy zabrzmi alarm
 
-3. Jeżeli się różnią, dopisz właściwy napis po średniku. 
+| **Chcesz\...**            | **Zrób to**                               |
+|---------------------------|-------------------------------------------|
+| Zobaczyć incydent od razu | Kliknij „Pokaż" przy odpowiedniej pozycji |
+| Tylko zamknąć alarm       | Kliknij w tło ekranu, poza przyciskami    |
+| Zająć się tym za chwilę   | Nie rób nic --- alarm wróci za minutę     |
 
-4. Kliknij „Stop”, a potem „Start”. 
+Kolory w tabeli
 
-- **✔  Przy kolejnym zdarzeniu alarm pojawia się poprawnie.** 
+| **Kolor** | **Znaczenie** | **Co robić** |
+|----|----|----|
+| Zielony | Wszystko działa | Nic |
+| Czerwony | Jest nowe zdarzenie | Obsłuż incydent w SecureVisio |
+| Pomarańczowy | Nie da się odczytać środowiska | Sprawdź widok „Incydenty" w tym oknie |
 
-### **Program w ogóle się nie uruchamia** 
+Kolory ekranów alarmu
 
-_Co widzisz: Podwójne kliknięcie nic nie daje albo pojawia się i znika czarne okno._ 
+| **Ekran** | **Znaczenie** | **Pilność** |
+|----|----|----|
+| Czerwony --- NOWE ZDARZENIE | Pojawił się incydent do obsłużenia | Wymaga reakcji |
+| Pomarańczowy --- ŚRODOWISKO ZAMKNIĘTE | Okno SecureVisio zostało zamknięte | Sprawdź, czy to zamierzone |
 
-Dlaczego: W wersji źródłowej zwykle oznacza to brak Pythona lub niezainstalowane dodatki. 
+Najczęstsza przyczyna problemów
 
-Strona 14 z 19 
+**Jeżeli coś nie działa, w dziewięciu przypadkach na dziesięć któreś okno SecureVisio nie jest ustawione na widoku listy incydentów. Sprawdź to najpierw.**
 
-SecureVisio Monitor - Instrukcja użytkownika 
+O czym warto pamiętać
 
-#### **Co zrobić** 
+- Uruchomienie programu to nie to samo co kliknięcie „Start".
 
-1. Sprawdź, czy wykonałeś oba kroki z rozdziału 3. 
+- Okna SecureVisio mogą być zminimalizowane --- program i tak je czyta.
 
-2. Otwórz PowerShell w katalogu programu i uruchom go tak, żeby zobaczyć komunikat błędu: 
+- Widok „Incydenty" musi być ustawiony w każdym monitorowanym oknie.
 
-<mark>python app.py</mark> 
+- Przy pierwszym prawdziwym zdarzeniu sprawdź, czy napis w kolumnie Status zgadza się z ustawieniami.
 
-3. Zanotuj treść błędu i przekaż ją osobie, która udostępniła Ci program. 
-
-- **✔  Otwiera się okno „SecureVisio Monitor”.** 
-
-Strona 15 z 19 
-
-SecureVisio Monitor - Instrukcja użytkownika 
-
-## **8. Gdzie szukać informacji** 
-
-### **Log w oknie programu** 
-
-Pole „Log bieżący” na dole okna pokazuje, co program robił: kiedy wykrył zdarzenie, kiedy je potwierdziłeś, kiedy środowisko zniknęło lub wróciło. To pierwsze miejsce, do którego warto zajrzeć. 
-
-Log czyści się przy zamknięciu programu - jeżeli chcesz coś zachować, zaznacz tekst i skopiuj. 
-
-### **Plik z błędami** 
-
-Program zapisuje błędy do pliku: 
-
-<mark>logs\monitor.log</mark> 
-
-Znajdziesz go w katalogu programu. Otwórz go Notatnikiem. 
-
-Pusty plik albo jego brak to dobra wiadomość - oznacza, że nie wystąpił żaden błąd. Program zapisuje tam wyłącznie problemy, a nie normalną pracę. 
-
-### **Tryb diagnostyczny** 
-
-Gdy trzeba zbadać problem dokładniej, zaznacz pole „Tryb diagnostyczny (szczegółowe logi)”. Program zacznie zapisywać znacznie więcej informacji. 
-
-Po zakończeniu diagnostyki odznacz to pole. W trybie diagnostycznym do pliku trafiają także dane incydentów - ich numery i statusy - a plik szybko się zapełnia. 
-
-## **9. Aktualizacja programu** 
-
-Program nie aktualizuje się sam. Gdy otrzymasz nową wersję: 
-
-1. Zamknij program. 
-
-2. Zrób kopię pliku settings.json z katalogu programu - zawiera Twoje ustawienia. Wystarczy skopiować go na pulpit. 
-
-3. Jeżeli masz własne dźwięki, skopiuj też katalog sounds. 
-
-4. Zastąp pliki programu nowymi. 
-
-5. Uruchom program i sprawdź, czy ustawienia są na miejscu. 
-
-Ustawienia zwykle zachowują się same, bo plik settings.json nie jest nadpisywany przez nową wersję. Kopia to zabezpieczenie na wszelki wypadek. 
-
-## **10. Wygodniejsze uruchamianie** 
-
-### **Skrót na pulpicie** 
-
-Strona 16 z 19 
-
-SecureVisio Monitor - Instrukcja użytkownika 
-
-1. Znajdź plik, którym uruchamiasz program (SecureVisioMonitor.exe lub Uruchom.bat). 
-
-2. Kliknij go prawym przyciskiem myszy. 
-
-3. Wybierz „Pokaż więcej opcji”, a następnie „Wyślij do” → „Pulpit (utwórz skrót)”. 
-
-- **✔  Na pulpicie pojawia się skrót, którym uruchomisz program jednym dwuklikiem.** 
-
-### **Uruchamianie razem z Windows** 
-
-1. Naciśnij Windows + R. 
-
-2. Wpisz shell:startup i naciśnij Enter. 
-
-3. Przeciągnij do otwartego katalogu skrót do programu. 
-
-Program uruchomi się sam po zalogowaniu, ale nadal trzeba kliknąć „Start”, żeby rozpocząć monitorowanie. Automatyczne rozpoczynanie nie jest dostępne. 
-
-Strona 17 z 19 
-
-SecureVisio Monitor - Instrukcja użytkownika 
-
-## **11. Szybka ściąga** 
-
-### **Codzienny start - 4 kroki** 
-
-1. Uruchom środowiska SecureVisio. 
-
-2. W każdym kliknij „Incydenty”. 
-
-3. Uruchom SecureVisio Monitor. 
-
-4. Kliknij „Start” i sprawdź, czy wszystkie wiersze są zielone. 
-
-### **Gdy zabrzmi alarm** 
-
-|**Chcesz...**|**Zrób to**||
-|---|---|---|
-|Zobaczyć incydent|od razu<br>Kliknij „Pokaż” przy o|dpowiedniej pozycji|
-|Tylko zamknąć ala|rm<br>Kliknij w tło ekranu, p|oza przyciskami|
-|Zająć się tym za ch|wilę<br>Nie rób nic - alarm wr|óci za minutę|
-|**Kolory w ta**<br>**Kolor**|**beli**<br>**Znaczenie**|**Co robić**|
-|Zielony|Wszystko działa|Nic|
-|Czerwony|Jest nowe zdarzenie|Obsłuż incydent w SecureVisio|
-|Pomarańczowy|Nie da się odczytać środowiska|Sprawdź widok „Incydenty” w tym oknie|
-
-
-
-### **Kolory w tabeli** 
-
-### **Kolory ekranów alarmu** 
-
-|**Ekran**|**Znaczenie**|**Pilność**|
-|---|---|---|
-|Czerwony - NOWE ZDARZENIE|Pojawił się incydent do obsłużenia|Wymaga reakcji|
-|Pomarańczowy - ŚRODOWISKO<br>ZAMKNIĘTE|Okno SecureVisio zostało zamknięte|Sprawdź, czy to<br>zamierzone|
-
-
-
-### **Najczęstsza przyczyna problemów** 
-
-**Jeżeli coś nie działa, w dziewięciu przypadkach na dziesięć któreś okno SecureVisio nie jest ustawione na widoku listy incydentów. Sprawdź to najpierw.** 
-
-### **O czym warto pamiętać** 
-
-Strona 18 z 19 
-
-SecureVisio Monitor - Instrukcja użytkownika 
-
-- Uruchomienie programu to nie to samo co kliknięcie „Start”. 
-
-- Okna SecureVisio mogą być zminimalizowane - program i tak je czyta. 
-
-- Widok „Incydenty” musi być ustawiony w każdym monitorowanym oknie. 
-
-- Przy pierwszym prawdziwym zdarzeniu sprawdź, czy napis w kolumnie Status zgadza się z ustawieniami. 
-
-- Program nie zastępuje obsługi incydentów - tylko informuje, że coś się pojawiło. 
-
-Strona 19 z 19 
-
+- Program nie zastępuje obsługi incydentów --- tylko informuje, że coś się pojawiło.

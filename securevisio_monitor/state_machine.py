@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import logging
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Iterable, Optional
 
 logger = logging.getLogger(__name__)
@@ -40,7 +40,7 @@ class EventAlert:
     """Pojedynczy incydent kwalifikujący się do zaalarmowania.
 
     Attributes:
-        client: Etykieta klienta.
+        client: Etykieta klienta (np. "Klient A").
         incident_id: Id incydentu w SecureVisio.
         network_map: Wartość kolumny "Mapa sieci". Pusta, gdy dane środowisko
             nie udostępnia tej kolumny.

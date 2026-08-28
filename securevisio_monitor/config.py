@@ -24,6 +24,12 @@ DEFAULT_ALARM_DISPLAY_SEC = 10
 DEFAULT_ALARM_REPEAT_SEC = 60
 DEFAULT_PHRASES = ("Nowe Zdarzenie", "New Event")
 
+# Tryby alarmowania. Wzajemnie wykluczające się - jednocześnie aktywny jest
+# dokładnie jeden.
+ALARM_MODE_FULLSCREEN = "fullscreen"
+ALARM_MODE_TOAST = "toast"
+ALARM_MODES = (ALARM_MODE_FULLSCREEN, ALARM_MODE_TOAST)
+
 # Zabezpieczenie przed błędem w konfiguracji (np. wpisanym ręcznie 0 lub
 # ujemną wartością), który zamieniłby monitor w pętlę obciążającą CPU.
 MIN_INTERVAL_SEC = 2
@@ -38,7 +44,7 @@ class ClientProfile:
     """Konfiguracja pojedynczego monitorowanego środowiska/klienta.
 
     Attributes:
-        label: Nazwa wyświetlana na alarmie i w GUI.
+        label: Nazwa wyświetlana na alarmie i w GUI (np. "Klient A").
         exe_path: Pełna ścieżka do pliku wykonywalnego tej instancji.
             Gdy ustawiona, ma pierwszeństwo przed automatycznym wykrywaniem
             po wzorcu ścieżki (odpowiednik strategii "manual" w resolverze).
@@ -77,6 +83,9 @@ class AppSettings:
         default_phrases: Domyślne frazy nowego zdarzenia dla klientów bez
             własnej konfiguracji.
         alert_on_first_scan: Czy alarmować o zdarzeniach zastanych przy starcie.
+        alarm_mode: Sposób alarmowania - "fullscreen" (pełnoekranowe ekrany
+            na wszystkich monitorach) albo "toast" (powiadomienia systemowe
+            Windows w rogu ekranu).
         sound_enabled: Czy odtwarzać dźwięk przy alarmie o nowym zdarzeniu.
         sound_file: Nazwa pliku z katalogu sounds/. Pusta oznacza domyślny.
         sound_volume: Głośność 0-100, nakładana na głośność systemu.
@@ -89,6 +98,7 @@ class AppSettings:
     alarm_repeat_sec: int = DEFAULT_ALARM_REPEAT_SEC
     default_phrases: tuple[str, ...] = DEFAULT_PHRASES
     alert_on_first_scan: bool = True
+    alarm_mode: str = ALARM_MODE_FULLSCREEN
     sound_enabled: bool = True
     sound_file: str = ""
     sound_volume: int = 80
@@ -106,6 +116,11 @@ class AppSettings:
             raise ConfigError("alarm_repeat_sec musi być dodatnie.")
         if not 0 <= self.sound_volume <= 100:
             raise ConfigError("sound_volume musi mieścić się w zakresie 0-100.")
+        if self.alarm_mode not in ALARM_MODES:
+            raise ConfigError(
+                f"alarm_mode musi być jedną z wartości: {', '.join(ALARM_MODES)} "
+                f"(otrzymano '{self.alarm_mode}')."
+            )
 
         self.default_phrases = tuple(p for p in self.default_phrases if p.strip())
         if not self.default_phrases:
@@ -188,6 +203,7 @@ class AppSettings:
             alarm_repeat_sec=data.get("alarm_repeat_sec", DEFAULT_ALARM_REPEAT_SEC),
             default_phrases=tuple(data.get("default_phrases", DEFAULT_PHRASES)),
             alert_on_first_scan=data.get("alert_on_first_scan", True),
+            alarm_mode=data.get("alarm_mode", ALARM_MODE_FULLSCREEN),
             sound_enabled=data.get("sound_enabled", True),
             sound_file=data.get("sound_file", ""),
             sound_volume=data.get("sound_volume", 80),

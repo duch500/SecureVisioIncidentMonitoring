@@ -184,7 +184,7 @@ class AlarmOverlay(QWidget):
         """Pokazuje alarm na wszystkich monitorach.
 
         Args:
-            entries: Pary (lokalizacja, klient).
+            entries: Pary (lokalizacja, klient) - np. ("Mapa logiczna", "Klient A").
             display_seconds: Czas wyświetlania. None używa wartości z konstruktora.
             unavailable: Wariant "środowisko zamknięte" - inny napis i kolor,
                 bez przycisków przywracania okna.

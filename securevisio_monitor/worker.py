@@ -126,6 +126,21 @@ class MonitorWorker(QThread):
         for client, incident_ids in by_client.items():
             self._state.machine_for(client).acknowledge(incident_ids)
 
+    def acknowledge_ids(
+        self, client: str, incident_ids: Optional[list[str]] = None
+    ) -> None:
+        """Potwierdza zdarzenia jednego klienta po identyfikatorach.
+
+        Wykorzystywane przy potwierdzeniu z powiadomienia systemowego, gdzie
+        znamy klienta i identyfikator, ale nie mamy pełnego obiektu zdarzenia.
+
+        Args:
+            client: Etykieta klienta.
+            incident_ids: Identyfikatory do potwierdzenia. None potwierdza
+                wszystkie aktywne zdarzenia tego klienta.
+        """
+        self._state.machine_for(client).acknowledge(incident_ids)
+
     def active_alerts(self) -> list[EventAlert]:
         """Zdarzenia nadal nieobsłużone i niepotwierdzone."""
         return self._state.active_alerts()

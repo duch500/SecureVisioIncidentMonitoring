@@ -1,0 +1,16 @@
+{
+  "base_dir": "",
+  "interval_sec": 10,
+  "alarm_display_sec": 10,
+  "alarm_repeat_sec": 60,
+  "default_phrases": [
+    "Nowe Zdarzenie",
+    "New Event"
+  ],
+  "alert_on_first_scan": true,
+  "alarm_mode": "toast",
+  "sound_enabled": false,
+  "sound_file": "alarm_domyslny.wav",
+  "sound_volume": 80,
+  "clients": []
+}
