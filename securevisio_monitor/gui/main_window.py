@@ -19,7 +19,7 @@ from typing import Optional
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QColor
+from PySide6.QtGui import QColor, QIcon
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -58,7 +58,7 @@ from ..config import (
 )
 from ..icon import find_icon
 from ..logging_setup import set_debug_mode
-from ..notifications import NOTIFICATIONS_AVAILABLE, ToastNotifier
+from ..notifications import ToastNotifier
 from ..sound import (
     SOUNDS_DIR,
     AlarmSound,
@@ -134,6 +134,14 @@ class MainWindow(QMainWindow):
         self._reminder_timer.timeout.connect(self._on_reminder_tick)
 
         self.setWindowTitle("SecureVisio Monitor")
+
+        # Ustawienie ikony bezpośrednio na oknie, niezależnie od
+        # QApplication.setWindowIcon() wywoływanego w app.py. Zabezpieczenie
+        # na wypadek, gdyby w danej konfiguracji Windows/Qt ikona aplikacji
+        # nie przenosiła się automatycznie na pasek tytułu konkretnego okna.
+        icon_path = find_icon()
+        if icon_path is not None:
+            self.setWindowIcon(QIcon(str(icon_path)))
         self.resize(900, 620)
         self._build_ui()
         self._load_settings_to_ui()
@@ -162,6 +170,9 @@ class MainWindow(QMainWindow):
 
         header = self.table.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        # Kolumna stanu mieści najdłuższy komunikat ("NOWE ZDARZENIE (n)"),
+        # żeby tekst nie łamał się na dwie linie i nie rozpychał wiersza.
+        header.setSectionResizeMode(1, QHeaderView.ResizeToContents)
         header.setSectionResizeMode(len(COLUMNS) - 1, QHeaderView.Stretch)
 
         layout.addWidget(self.table)
@@ -545,6 +556,12 @@ class MainWindow(QMainWindow):
             return
 
         self.log(f"Przywrócono środowisko {client}.")
+
+        # W trybie powiadomień nie ma ekranu alarmu, któremu trzeba ustąpić
+        # miejsca - potwierdzenie i wyciszenie obsługuje _on_toast_acknowledged,
+        # wywoływane równolegle przez ten sam przycisk powiadomienia.
+        if self._toast_mode():
+            return
 
         if single_entry:
             # Jedno zdarzenie - alarm znika w całości.

@@ -34,11 +34,6 @@ a = Analysis(
         "win32process",
         # Powiadomienia systemowe Windows. Moduly winrt sa ladowane
         # dynamicznie i nie sa wykrywane automatycznie.
-        "winrt",
-        "winrt.runtime",
-        "winrt.system",
-        "winrt.windows.foundation",
-        "winrt.windows.foundation.collections",
         "winrt.windows.data.xml.dom",
         "winrt.windows.ui.notifications",
     ],
