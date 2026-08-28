@@ -14,10 +14,9 @@ Klient rozpoznawany jest według kolejności strategii (pierwsza pasująca wygry
 from __future__ import annotations
 
 import logging
-import re
 from dataclasses import dataclass
 from pathlib import PureWindowsPath
-from typing import Optional
+from typing import Iterable, Optional
 
 try:
     import win32api
@@ -38,6 +37,13 @@ PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
 _EXE_NAME = "securevisio.exe"
 _WINDOW_TITLE = "securevisio"
 
+# Okno dialogu błędu SecureVisio. Rozpoznawane po nazwie klasy okna, która
+# jest wpisana na stałe przez twórców aplikacji i - w odróżnieniu od tytułu
+# czy treści komunikatu - nie zależy od wersji językowej interfejsu.
+# Zweryfikowane empirycznie: klasa ma postać
+# "HwndWrapper[SecureVisio.exe;ErrorWnd;<guid>]".
+_ERROR_WINDOW_CLASS_MARKER = "errorwnd"
+
 
 @dataclass(frozen=True)
 class WindowInfo:
@@ -47,6 +53,37 @@ class WindowInfo:
     pid: int
     title: str
     exe_path: str
+
+
+@dataclass(frozen=True)
+class ErrorDialog:
+    """Okno dialogu błędu wykryte w procesie SecureVisio.
+
+    Attributes:
+        hwnd: Uchwyt okna dialogu.
+        owner_hwnd: Uchwyt okna nadrzędnego (główne okno środowiska).
+            Pozwala jednoznacznie powiązać dialog z konkretnym klientem,
+            bez zgadywania po identyfikatorze procesu.
+        pid: Identyfikator procesu.
+        title: Tytuł okna dialogu.
+        texts: Teksty odczytane z dialogu - podstawa rozpoznania rodzaju błędu.
+    """
+
+    hwnd: int
+    owner_hwnd: int
+    pid: int
+    title: str
+    texts: tuple[str, ...] = ()
+
+    def matches_any(self, phrases: Iterable[str]) -> bool:
+        """Sprawdza, czy któryś tekst dialogu pasuje do podanych fraz.
+
+        Klasa okna sama w sobie nie mówi, JAKI to błąd - SecureVisio może
+        używać tego samego typu okna do innych komunikatów. Dopiero treść
+        pozwala rozpoznać zerwanie połączenia.
+        """
+        haystack = " ".join(self.texts).casefold()
+        return any(p.strip().casefold() in haystack for p in phrases if p.strip())
 
 
 @dataclass(frozen=True)
@@ -121,6 +158,99 @@ def _get_process_path(pid: int) -> Optional[str]:
                 win32api.CloseHandle(handle)
             except Exception:  # noqa: BLE001
                 pass
+
+
+def enumerate_error_dialogs() -> list[ErrorDialog]:
+    """Wykrywa otwarte okna dialogu błędu w procesach SecureVisio.
+
+    Dialog jest osobnym oknem systemowym (własny uchwyt), powiązanym z oknem
+    głównym środowiska przez relację właściciela. Rozpoznajemy go po nazwie
+    klasy okna, co jest tańsze niż przeszukiwanie drzewa UI Automation
+    i niezależne od języka interfejsu.
+    """
+    dialogs: list[ErrorDialog] = []
+
+    def callback(hwnd: int, _) -> bool:
+        if not win32gui.IsWindowVisible(hwnd):
+            return True
+
+        try:
+            class_name = win32gui.GetClassName(hwnd)
+        except Exception:  # noqa: BLE001
+            return True
+
+        if _ERROR_WINDOW_CLASS_MARKER not in class_name.lower():
+            return True
+
+        try:
+            _, pid = win32process.GetWindowThreadProcessId(hwnd)
+        except Exception:  # noqa: BLE001
+            return True
+
+        exe_path = _get_process_path(pid)
+        if not exe_path or not exe_path.lower().endswith(_EXE_NAME):
+            return True
+
+        try:
+            owner = win32gui.GetWindow(hwnd, win32con.GW_OWNER)
+            title = win32gui.GetWindowText(hwnd)
+        except Exception:  # noqa: BLE001
+            owner, title = 0, ""
+
+        dialogs.append(
+            ErrorDialog(
+                hwnd=hwnd,
+                owner_hwnd=owner,
+                pid=pid,
+                title=title,
+                texts=_read_dialog_texts(hwnd),
+            )
+        )
+        return True
+
+    win32gui.EnumWindows(callback, None)
+
+    if dialogs:
+        logger.debug("Wykryto %d okien dialogu błędu.", len(dialogs))
+    return dialogs
+
+
+def _read_dialog_texts(hwnd: int) -> tuple[str, ...]:
+    """Odczytuje teksty widoczne w oknie dialogu przez UI Automation.
+
+    Zwraca pustą krotkę przy niepowodzeniu - brak treści oznacza jedynie,
+    że nie da się rozpoznać rodzaju błędu, i nie może przerwać monitorowania.
+    """
+    try:
+        import uiautomation as auto
+    except ImportError:
+        return ()
+
+    texts: list[str] = []
+
+    try:
+        root = auto.ControlFromHandle(hwnd)
+        if root is None:
+            return ()
+
+        def walk(ctrl, depth: int) -> None:
+            if depth > 4 or len(texts) > 30:
+                return
+            try:
+                name = ctrl.Name
+                if name:
+                    texts.append(str(name))
+                for child in ctrl.GetChildren():
+                    walk(child, depth + 1)
+            except Exception:  # noqa: BLE001
+                pass
+
+        walk(root, 0)
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("Nie udało się odczytać treści dialogu %d: %s", hwnd, exc)
+        return ()
+
+    return tuple(texts)
 
 
 def is_window_minimized(hwnd: int) -> bool:

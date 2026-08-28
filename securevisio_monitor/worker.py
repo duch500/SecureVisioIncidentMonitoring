@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import logging
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional
 
@@ -21,7 +21,11 @@ from PySide6.QtCore import QThread, Signal
 from .config import AppSettings
 from .state_machine import EventAlert, MonitorState
 from .uia_reader import GridReadError, read_incidents
-from .window_resolver import ClientResolver, is_window_minimized
+from .window_resolver import (
+    ClientResolver,
+    enumerate_error_dialogs,
+    is_window_minimized,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -43,12 +47,18 @@ class ClientStatus:
     is_minimized: bool = False
     error: str = ""
     method: str = "UI Automation"
+    connection_lost: bool = False
 
     @property
     def state_text(self) -> str:
         """Krótki opis stanu do wyświetlenia w tabeli GUI."""
         if not self.is_available:
             return "NIEDOSTĘPNY"
+        # Zerwane połączenie ma pierwszeństwo przed liczbą zdarzeń: dane
+        # w siatce są wtedy zamrożone sprzed utraty łączności, więc
+        # pokazywanie ich jako aktualnych wprowadzałoby w błąd.
+        if self.connection_lost:
+            return "BRAK POŁĄCZENIA"
         if self.active_events:
             return f"NOWE ZDARZENIE ({self.active_events})"
         return "OK"
@@ -66,6 +76,9 @@ class _ClientRuntime:
 
     status: ClientStatus
     was_available: bool = False
+    # Zgłoszone zerwanie połączenia - zapobiega powtarzaniu alarmu w każdym
+    # cyklu, dopóki dialog błędu pozostaje otwarty.
+    connection_error_reported: bool = False
     # Klient uznany za utracony, dla którego już zaalarmowano - zapobiega
     # powtarzaniu alarmu przy każdym cyklu, gdy SecureVisio pozostaje zamknięte.
     loss_reported: bool = False
@@ -78,6 +91,7 @@ class MonitorWorker(QThread):
         new_alerts: Świeżo wykryte przejścia na status nowego zdarzenia.
         clients_lost: Etykiety klientów, których okno właśnie zniknęło.
         clients_returned: Etykiety klientów, których okno wróciło.
+        connection_lost: Etykiety klientów z wykrytym zerwaniem połączenia.
         status_updated: Pełny stan wszystkich klientów po każdym cyklu.
         tick: Zakończono cykl sprawdzania (do odliczania przypomnień).
         log_message: Komunikat do wyświetlenia w logu GUI.
@@ -86,6 +100,7 @@ class MonitorWorker(QThread):
     new_alerts = Signal(list)
     clients_lost = Signal(list)
     clients_returned = Signal(list)
+    connection_lost = Signal(list)
     status_updated = Signal(list)
     tick = Signal(list)
     log_message = Signal(str)
@@ -199,10 +214,17 @@ class MonitorWorker(QThread):
                 continue
             windows[item.client_label] = item
 
+        # Mapa okno_główne -> klient, do powiązania dialogów błędu z klientem.
+        hwnd_to_client = {
+            item.window.hwnd: label for label, item in windows.items()
+        }
+        clients_with_error = self._detect_connection_errors(hwnd_to_client)
+
         expected = self._expected_clients(windows.keys())
         fresh_alerts: list[EventAlert] = []
         lost_clients: list[str] = []
         returned_clients: list[str] = []
+        new_connection_errors: list[str] = []
 
         for label in expected:
             item = windows.get(label)
@@ -224,10 +246,27 @@ class MonitorWorker(QThread):
             if runtime.loss_reported:
                 returned_clients.append(label)
 
-            fresh_alerts.extend(self._read_client(label, item, runtime))
+            has_error = label in clients_with_error
+
+            if has_error:
+                if not runtime.connection_error_reported:
+                    new_connection_errors.append(label)
+                    runtime.connection_error_reported = True
+                    self.log_message.emit(f"{label}: wykryto zerwanie połączenia.")
+                    logger.warning("Klient %s: zerwane połączenie z serwerem.", label)
+            elif runtime.connection_error_reported:
+                runtime.connection_error_reported = False
+                self.log_message.emit(f"{label}: połączenie przywrócone.")
+
+            fresh_alerts.extend(
+                self._read_client(label, item, runtime, connection_lost=has_error)
+            )
 
         statuses = [r.status for r in self._runtimes.values()]
         self.status_updated.emit(statuses)
+
+        if new_connection_errors:
+            self.connection_lost.emit(new_connection_errors)
 
         if returned_clients:
             self.clients_returned.emit(returned_clients)
@@ -240,8 +279,64 @@ class MonitorWorker(QThread):
 
         self.tick.emit(self._state.active_alerts())
 
-    def _read_client(self, label: str, item, runtime: _ClientRuntime) -> list[EventAlert]:
-        """Odczytuje jedno środowisko i aktualizuje jego stan."""
+    def _detect_connection_errors(self, hwnd_to_client: dict[int, str]) -> set[str]:
+        """Zwraca etykiety klientów z otwartym dialogiem błędu połączenia.
+
+        Dialog rozpoznajemy dwuetapowo: po klasie okna (tanie, niezależne od
+        języka) i po treści (bo ta sama klasa okna może obsługiwać także inne
+        błędy niż zerwanie połączenia).
+        """
+        if not self._settings.detect_connection_errors:
+            return set()
+
+        phrases = self._settings.connection_error_phrases
+        if not phrases:
+            return set()
+
+        affected: set[str] = set()
+
+        try:
+            dialogs = enumerate_error_dialogs()
+        except Exception as exc:  # noqa: BLE001 - pętla nie może umrzeć
+            logger.warning("Błąd wykrywania dialogów: %s", exc)
+            return set()
+
+        for dialog in dialogs:
+            if not dialog.matches_any(phrases):
+                logger.debug(
+                    "Dialog błędu HWND=%d nie pasuje do fraz połączenia - pomijam.",
+                    dialog.hwnd,
+                )
+                continue
+
+            client = hwnd_to_client.get(dialog.owner_hwnd)
+            if client is None:
+                logger.debug(
+                    "Dialog błędu HWND=%d: nie udało się powiązać z klientem "
+                    "(okno nadrzędne=%d).",
+                    dialog.hwnd, dialog.owner_hwnd,
+                )
+                continue
+
+            affected.add(client)
+
+        return affected
+
+    def _read_client(
+        self,
+        label: str,
+        item,
+        runtime: _ClientRuntime,
+        connection_lost: bool = False,
+    ) -> list[EventAlert]:
+        """Odczytuje jedno środowisko i aktualizuje jego stan.
+
+        Args:
+            connection_lost: Gdy True, dane w siatce pochodzą sprzed utraty
+                łączności. Odczyt jest wykonywany na potrzeby diagnostyki,
+                ale NIE służy do wykrywania nowych zdarzeń - każda zmiana
+                wykryta w zamrożonych danych byłaby fałszywa.
+        """
         hwnd = item.window.hwnd
         status = runtime.status
 
@@ -272,7 +367,14 @@ class MonitorWorker(QThread):
         )
         machine = self._state.machine_for(label, phrases)
 
-        alerts = machine.update(snapshot.incidents)
+        if connection_lost:
+            # Stan incydentów pozostaje nienaruszony - tak samo jak przy
+            # nieudanym odczycie. Nowe zdarzenia i tak nie docierają do
+            # zamrożonej siatki, więc nie ma ryzyka ich przeoczenia.
+            machine.mark_unavailable()
+            alerts = []
+        else:
+            alerts = machine.update(snapshot.incidents)
 
         status.is_available = True
         status.error = ""
@@ -281,6 +383,7 @@ class MonitorWorker(QThread):
         status.incident_count = len(snapshot.incidents)
         status.active_events = len(machine.active_alerts())
         status.is_minimized = is_window_minimized(hwnd)
+        status.connection_lost = connection_lost
 
         runtime.was_available = True
         runtime.loss_reported = False

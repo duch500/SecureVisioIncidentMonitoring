@@ -86,6 +86,8 @@ COLUMNS = ["Klient", "Stan", "Ostatni odczyt", "Incydenty", "Czas odczytu", "Uwa
 _COLOR_OK = QColor(215, 245, 215)
 _COLOR_ALERT = QColor(255, 205, 205)
 _COLOR_ERROR = QColor(255, 230, 190)
+# Zerwane połączenie - odpowiednik fioletu z ekranu alarmu.
+_COLOR_CONNECTION = QColor(226, 214, 245)
 
 # Tła komórek są jasne niezależnie od motywu systemu, więc kolor tekstu musi
 # być ustawiony jawnie - w trybie ciemnym Windows domyślny biały tekst byłby
@@ -438,6 +440,7 @@ class MainWindow(QMainWindow):
         self._worker.new_alerts.connect(self._on_new_alerts)
         self._worker.clients_lost.connect(self._on_clients_lost)
         self._worker.clients_returned.connect(self._on_clients_returned)
+        self._worker.connection_lost.connect(self._on_connection_lost)
         self._worker.status_updated.connect(self._on_status_updated)
         self._worker.log_message.connect(self.log)
         self._worker.finished.connect(self._on_worker_finished)
@@ -695,6 +698,28 @@ class MainWindow(QMainWindow):
             entries, self._settings.alarm_display_sec, unavailable=True
         )
 
+    def _on_connection_lost(self, labels: list) -> None:
+        """Alarm o zerwanym połączeniu - jednorazowy, bez dźwięku.
+
+        Dane w siatce tego środowiska są od tej chwili nieaktualne, a wykrywanie
+        nowych zdarzeń dla niego jest wstrzymane (obsługiwane w workerze).
+        """
+        for label in labels:
+            self.log(f"ZERWANE POŁĄCZENIE — {label} (dane mogą być nieaktualne)")
+
+        if self._toast_mode():
+            shown = sum(
+                1 for label in labels if self._toasts.show_connection_error(label)
+            )
+            if shown:
+                return
+            # Powiadomienia zawiodły - pokazujemy alarm pełnoekranowy.
+
+        entries = [("Utracono połączenie z serwerem", label) for label in labels]
+        self._overlay.show_alarm(
+            entries, self._settings.alarm_display_sec, connection_error=True
+        )
+
     def _on_clients_returned(self, labels: list) -> None:
         """Powrót środowiska - tylko wpis w logu, bez alarmu."""
         for label in labels:
@@ -758,7 +783,9 @@ class MainWindow(QMainWindow):
                 with_events += 1
 
             note = status.error
-            if not note and status.is_minimized:
+            if not note and status.connection_lost:
+                note = "brak połączenia z serwerem — dane nieaktualne"
+            elif not note and status.is_minimized:
                 note = "okno zminimalizowane (monitorowanie działa)"
 
             values = [
@@ -772,6 +799,8 @@ class MainWindow(QMainWindow):
 
             if not status.is_available:
                 color = _COLOR_ERROR
+            elif status.connection_lost:
+                color = _COLOR_CONNECTION
             elif status.active_events:
                 color = _COLOR_ALERT
             else:
@@ -786,9 +815,12 @@ class MainWindow(QMainWindow):
                 self.table.setItem(row, col, item)
 
         total = len(statuses)
+        disconnected = sum(1 for s in statuses if s.connection_lost)
         summary = f"Monitorowane: {available}/{total}"
         if with_events:
             summary += f"  |  środowiska z nowym zdarzeniem: {with_events}"
+        if disconnected:
+            summary += f"  |  bez połączenia: {disconnected}"
         summary += f"  |  ostatnie sprawdzenie: {datetime.now():%H:%M:%S}"
         self.lbl_summary.setText(summary)
 

@@ -30,6 +30,7 @@ logger = logging.getLogger(__name__)
 
 ALARM_TITLE = "NOWE ZDARZENIE"
 ALARM_TITLE_UNAVAILABLE = "ŚRODOWISKO ZAMKNIĘTE"
+ALARM_TITLE_CONNECTION = "ZERWANE POŁĄCZENIE"
 
 # Liczba pozycji pokazywanych na ekranie, zanim przejdziemy na skrót
 # "i N kolejnych" - przy większej liczbie napis przestaje być czytelny
@@ -41,6 +42,9 @@ MAX_VISIBLE_ENTRIES = 6
 # rodzaj alarmu bez czytania napisu.
 _STYLE_BACKGROUND = "background-color: rgb(180, 0, 0);"
 _STYLE_BACKGROUND_UNAVAILABLE = "background-color: rgb(190, 95, 0);"
+# Fiolet dla zerwanego połączenia - odróżnialny od czerwonego (zdarzenie
+# do obsługi) i pomarańczowego (środowisko zamknięte).
+_STYLE_BACKGROUND_CONNECTION = "background-color: rgb(95, 45, 140);"
 _STYLE_TITLE = "color: white; font-size: 72px; font-weight: bold;"
 _STYLE_ENTRY = "color: white; font-size: 30px;"
 _STYLE_HINT = "color: rgba(255, 255, 255, 180); font-size: 20px;"
@@ -180,6 +184,7 @@ class AlarmOverlay(QWidget):
         entries: Iterable[tuple[str, str]],
         display_seconds: Optional[int] = None,
         unavailable: bool = False,
+        connection_error: bool = False,
     ) -> None:
         """Pokazuje alarm na wszystkich monitorach.
 
@@ -188,6 +193,8 @@ class AlarmOverlay(QWidget):
             display_seconds: Czas wyświetlania. None używa wartości z konstruktora.
             unavailable: Wariant "środowisko zamknięte" - inny napis i kolor,
                 bez przycisków przywracania okna.
+            connection_error: Wariant "zerwane połączenie" - z przyciskiem
+                "Pokaż", żeby móc od razu sięgnąć po opcję ponowienia próby.
         """
         entry_list = list(entries)
         if not entry_list:
@@ -196,13 +203,21 @@ class AlarmOverlay(QWidget):
 
         self.hide_alarm(emit_signal=False)
 
-        title = ALARM_TITLE_UNAVAILABLE if unavailable else ALARM_TITLE
-        background = _STYLE_BACKGROUND_UNAVAILABLE if unavailable else _STYLE_BACKGROUND
-        hint = (
-            "Kliknij, aby zamknąć"
-            if unavailable
-            else "Kliknij tło, aby potwierdzić wszystkie"
-        )
+        if connection_error:
+            title = ALARM_TITLE_CONNECTION
+            background = _STYLE_BACKGROUND_CONNECTION
+            hint = "Kliknij „Pokaż”, aby przejść do środowiska"
+            with_buttons = True
+        elif unavailable:
+            title = ALARM_TITLE_UNAVAILABLE
+            background = _STYLE_BACKGROUND_UNAVAILABLE
+            hint = "Kliknij, aby zamknąć"
+            with_buttons = False
+        else:
+            title = ALARM_TITLE
+            background = _STYLE_BACKGROUND
+            hint = "Kliknij tło, aby potwierdzić wszystkie"
+            with_buttons = True
 
         screens = QGuiApplication.screens()
         if not screens:
@@ -216,7 +231,7 @@ class AlarmOverlay(QWidget):
                 entry_list,
                 hint,
                 background,
-                with_buttons=not unavailable,
+                with_buttons=with_buttons,
             )
             alarm_screen.background_clicked.connect(self._on_clicked)
             alarm_screen.show_requested.connect(self.show_requested)

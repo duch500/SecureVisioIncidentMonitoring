@@ -26,6 +26,15 @@ DEFAULT_PHRASES = ("Nowe Zdarzenie", "New Event")
 
 # Tryby alarmowania. Wzajemnie wykluczające się - jednocześnie aktywny jest
 # dokładnie jeden.
+# Frazy rozpoznające dialog błędu jako zerwanie połączenia. Sama klasa okna
+# nie wystarcza - SecureVisio może używać tego samego typu okna do innych
+# komunikatów, więc rodzaj błędu rozpoznajemy po treści.
+DEFAULT_CONNECTION_ERROR_PHRASES = (
+    "Błąd połączenia",
+    "nawiązać połączenia",
+    "Connection error",
+)
+
 ALARM_MODE_FULLSCREEN = "fullscreen"
 ALARM_MODE_TOAST = "toast"
 ALARM_MODES = (ALARM_MODE_FULLSCREEN, ALARM_MODE_TOAST)
@@ -83,6 +92,9 @@ class AppSettings:
         default_phrases: Domyślne frazy nowego zdarzenia dla klientów bez
             własnej konfiguracji.
         alert_on_first_scan: Czy alarmować o zdarzeniach zastanych przy starcie.
+        connection_error_phrases: Frazy rozpoznające zerwanie połączenia
+            w oknie dialogu błędu SecureVisio.
+        detect_connection_errors: Czy wykrywać zerwanie połączenia.
         alarm_mode: Sposób alarmowania - "fullscreen" (pełnoekranowe ekrany
             na wszystkich monitorach) albo "toast" (powiadomienia systemowe
             Windows w rogu ekranu).
@@ -98,6 +110,8 @@ class AppSettings:
     alarm_repeat_sec: int = DEFAULT_ALARM_REPEAT_SEC
     default_phrases: tuple[str, ...] = DEFAULT_PHRASES
     alert_on_first_scan: bool = True
+    detect_connection_errors: bool = True
+    connection_error_phrases: tuple[str, ...] = DEFAULT_CONNECTION_ERROR_PHRASES
     alarm_mode: str = ALARM_MODE_FULLSCREEN
     sound_enabled: bool = True
     sound_file: str = ""
@@ -123,6 +137,9 @@ class AppSettings:
             )
 
         self.default_phrases = tuple(p for p in self.default_phrases if p.strip())
+        self.connection_error_phrases = tuple(
+            p for p in self.connection_error_phrases if p.strip()
+        )
         if not self.default_phrases:
             logger.warning(
                 "Brak domyślnych fraz nowego zdarzenia - klienci bez własnych "
@@ -180,6 +197,7 @@ class AppSettings:
     def to_dict(self) -> dict[str, Any]:
         data = asdict(self)
         data["default_phrases"] = list(self.default_phrases)
+        data["connection_error_phrases"] = list(self.connection_error_phrases)
         for client_dict in data["clients"]:
             client_dict["phrases"] = list(client_dict["phrases"])
         return data
@@ -203,6 +221,10 @@ class AppSettings:
             alarm_repeat_sec=data.get("alarm_repeat_sec", DEFAULT_ALARM_REPEAT_SEC),
             default_phrases=tuple(data.get("default_phrases", DEFAULT_PHRASES)),
             alert_on_first_scan=data.get("alert_on_first_scan", True),
+            detect_connection_errors=data.get("detect_connection_errors", True),
+            connection_error_phrases=tuple(
+                data.get("connection_error_phrases", DEFAULT_CONNECTION_ERROR_PHRASES)
+            ),
             alarm_mode=data.get("alarm_mode", ALARM_MODE_FULLSCREEN),
             sound_enabled=data.get("sound_enabled", True),
             sound_file=data.get("sound_file", ""),

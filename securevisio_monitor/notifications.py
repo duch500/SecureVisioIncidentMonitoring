@@ -257,6 +257,31 @@ class ToastNotifier(QObject):
 
         return self._show(xml, f"zamknięcie {client}")
 
+    def show_connection_error(self, client: str) -> bool:
+        """Wyświetla powiadomienie o zerwanym połączeniu.
+
+        Zawiera przycisk "Pokaż", ponieważ w oknie SecureVisio czeka decyzja
+        operatora (ponowienie próby albo zamknięcie aplikacji).
+        """
+        ack_arg = _SEP.join((ACTION_ACKNOWLEDGE, client, ""))
+        show_arg = _SEP.join((ACTION_SHOW, client, ""))
+
+        xml = f"""<toast launch="{_escape(ack_arg)}">
+    <visual>
+        <binding template="ToastGeneric">
+            <text>ZERWANE POŁĄCZENIE</text>
+            <text>{_escape(client)}</text>
+            <text>SecureVisio utracił połączenie z serwerem. Dane mogą być nieaktualne.</text>
+        </binding>
+    </visual>
+    <actions>
+        <action content="Pokaż" arguments="{_escape(show_arg)}" activationType="foreground"/>
+    </actions>
+    <audio silent="true"/>
+</toast>"""
+
+        return self._show(xml, f"zerwane połączenie {client}")
+
     def _show(self, xml: str, description: str) -> bool:
         if not self.is_available:
             logger.debug("Pominięto powiadomienie (%s) - mechanizm niedostępny.", description)
