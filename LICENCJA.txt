@@ -1,0 +1,40 @@
+SecureVisio Monitor — wersja 1.2
+WARUNKI KORZYSTANIA (WERSJA DEMONSTRACYJNA)
+==============================================================
+
+Autor: Maciej Adamiok
+
+Wersja demonstracyjna, udostępniona wyłącznie do celów testowych.
+
+Program stanowi własność autora. Bez jego pisemnej zgody zabronione jest:
+kopiowanie i rozpowszechnianie programu, modyfikowanie go, dekompilacja oraz odtwarzanie kodu źródłowego, a także omijanie zabezpieczeń ograniczających okres używania.
+
+Korzystanie z programu oznacza akceptację powyższych warunków.
+
+OKRES UŻYTKOWANIA
+--------------------------------------------------------------
+Wersja demonstracyjna działa przez 7 dni od pierwszego
+uruchomienia programu na danym komputerze. Po upływie tego okresu
+monitorowanie zostaje wyłączone.
+
+Program weryfikuje czas z publicznym serwerem czasu (NTP), dlatego do
+uruchomienia wymagane jest połączenie z internetem. Nie jest to dodatkowe
+ograniczenie — monitorowanie środowisk SecureVisio i tak wymaga sieci.
+
+PRZETWARZANE DANE
+--------------------------------------------------------------
+Program działa wyłącznie lokalnie. Nie przesyła żadnych danych o incydentach,
+środowiskach ani o użytkowniku na zewnątrz. Jedyna komunikacja sieciowa
+związana z licencją to zapytanie o aktualny czas do publicznego serwera NTP.
+
+Dane potrzebne do działania wersji demonstracyjnej (data pierwszego
+uruchomienia oraz identyfikator komputera) przechowywane są lokalnie
+na tym komputerze.
+
+BRAK GWARANCJI
+--------------------------------------------------------------
+Program udostępniany jest w stanie, w jakim się znajduje, bez jakiejkolwiek
+gwarancji. Autor nie ponosi odpowiedzialności za skutki jego użycia,
+w szczególności za nieskuteczne wykrycie zdarzenia w systemie SecureVisio.
+Program stanowi narzędzie pomocnicze i nie zastępuje standardowych procedur
+monitorowania bezpieczeństwa.

@@ -1,6 +1,6 @@
 {
-  "base_dir": "",
-  "interval_sec": 10,
+  "base_dir": "C:\\Users\\madamiok\\Desktop\\SecureVisio",
+  "interval_sec": 30,
   "alarm_display_sec": 10,
   "alarm_repeat_sec": 60,
   "default_phrases": [
@@ -8,7 +8,13 @@
     "New Event"
   ],
   "alert_on_first_scan": true,
-  "alarm_mode": "toast",
+  "detect_connection_errors": true,
+  "connection_error_phrases": [
+    "Błąd połączenia",
+    "nawiązać połączenia",
+    "Connection error"
+  ],
+  "alarm_mode": "fullscreen",
   "sound_enabled": false,
   "sound_file": "alarm_domyslny.wav",
   "sound_volume": 80,

@@ -43,10 +43,13 @@ from PySide6.QtWidgets import (
 
 from ..about import (
     APP_AUTHOR,
+    APP_CONTACT,
     APP_DESCRIPTION,
     APP_LOGO_AUTHOR,
     APP_NAME,
     APP_VERSION,
+    IS_DEMO,
+    LICENSE_TEXT,
 )
 from ..alert_manager import AlertManager
 from ..config import (
@@ -57,6 +60,7 @@ from ..config import (
     save_settings,
 )
 from ..icon import find_icon
+from ..licensing.license_worker import LicenseCheckWorker
 from ..logging_setup import set_debug_mode
 from ..notifications import ToastNotifier
 from ..sound import (
@@ -135,7 +139,13 @@ class MainWindow(QMainWindow):
         self._reminder_timer.setInterval(1000)
         self._reminder_timer.timeout.connect(self._on_reminder_tick)
 
-        self.setWindowTitle("SecureVisio Monitor")
+        title = APP_NAME + (" — wersja demonstracyjna" if IS_DEMO else "")
+        self.setWindowTitle(title)
+
+        # Weryfikacja wersji demonstracyjnej. Start jest zablokowany, dopóki
+        # sprawdzenie w tle się nie zakończy - patrz _start_license_check().
+        self._license_allowed = False
+        self._license_worker: Optional[LicenseCheckWorker] = None
 
         # Ustawienie ikony bezpośrednio na oknie, niezależnie od
         # QApplication.setWindowIcon() wywoływanego w app.py. Zabezpieczenie
@@ -147,6 +157,7 @@ class MainWindow(QMainWindow):
         self.resize(900, 620)
         self._build_ui()
         self._load_settings_to_ui()
+        self._start_license_check()
 
     # --- Budowa interfejsu -------------------------------------------------
 
@@ -163,6 +174,15 @@ class MainWindow(QMainWindow):
     def _build_status_group(self) -> QGroupBox:
         group = QGroupBox("Monitorowane środowiska")
         layout = QVBoxLayout(group)
+
+        # Pasek stanu wersji demonstracyjnej - widoczny stale, nie tylko przy
+        # blokadzie, żeby użytkownik wiedział, ile czasu zostało.
+        self.lbl_demo = QLabel()
+        self.lbl_demo.setWordWrap(True)
+        self.lbl_demo.setVisible(IS_DEMO)
+        if IS_DEMO:
+            self._set_demo_banner("Trwa weryfikacja wersji demonstracyjnej...", "info")
+        layout.addWidget(self.lbl_demo)
 
         self.table = QTableWidget(0, len(COLUMNS))
         self.table.setHorizontalHeaderLabels(COLUMNS)
@@ -326,6 +346,9 @@ class MainWindow(QMainWindow):
         row = QHBoxLayout()
 
         self.btn_start = QPushButton("Start")
+        # Domyślnie nieaktywny - odblokowywany dopiero po pozytywnej
+        # weryfikacji wersji demonstracyjnej w tle (_start_license_check).
+        self.btn_start.setEnabled(False)
         self.btn_start.clicked.connect(self.start_monitoring)
         row.addWidget(self.btn_start)
 
@@ -414,9 +437,71 @@ class MainWindow(QMainWindow):
 
         return True
 
+    # --- Weryfikacja wersji demonstracyjnej --------------------------------
+
+    def _start_license_check(self) -> None:
+        """Uruchamia weryfikację w tle, żeby nie blokować budowy okna."""
+        self.log("Weryfikacja wersji demonstracyjnej...")
+        self._license_worker = LicenseCheckWorker()
+        self._license_worker.finished_check.connect(self._on_license_checked)
+        self._license_worker.start()
+
+    def _set_demo_banner(self, text: str, level: str) -> None:
+        """Ustawia treść i kolor paska wersji demonstracyjnej.
+
+        Poziomy: "info" (neutralny), "ok" (aktywna), "warn" (kończy się),
+        "block" (zablokowana).
+        """
+        styles = {
+            "info": ("#EAEAEA", "#333333"),
+            "ok": ("#DCEFDC", "#1E4620"),
+            "warn": ("#FFF2CC", "#7A5200"),
+            "block": ("#F8D7DA", "#7A1520"),
+        }
+        background, color = styles.get(level, styles["info"])
+        self.lbl_demo.setStyleSheet(
+            f"background-color: {background}; color: {color};"
+            "padding: 6px; border-radius: 4px; font-weight: bold;"
+        )
+        self.lbl_demo.setText(text)
+
+    def _on_license_checked(self, result) -> None:
+        self._license_allowed = result.final_allowed
+
+        if not result.final_allowed:
+            self.btn_start.setEnabled(False)
+            self._set_demo_banner("WERSJA DEMONSTRACYJNA NIEAKTYWNA", "block")
+            self.log("Uruchamianie zablokowane.")
+            QMessageBox.warning(self, "Wersja demonstracyjna", result.message)
+            return
+
+        self.btn_start.setEnabled(True)
+        self.log("Weryfikacja zakończona pomyślnie.")
+
+        days = getattr(result.decision, "days_left", None) if result.decision else None
+        if days is None:
+            self._set_demo_banner("Wersja demonstracyjna — aktywna", "ok")
+        elif days <= 2:
+            self._set_demo_banner(
+                f"Wersja demonstracyjna — pozostało {days} dni. "
+                f"W sprawie pełnej wersji skontaktuj się: {APP_AUTHOR}",
+                "warn",
+            )
+        else:
+            self._set_demo_banner(
+                f"Wersja demonstracyjna — pozostało {days} dni", "ok"
+            )
+
     # --- Sterowanie monitorowaniem ----------------------------------------
 
     def start_monitoring(self) -> None:
+        if not self._license_allowed:
+            # Zabezpieczenie niezależne od stanu przycisku - start_monitoring
+            # nie może uruchomić monitorowania bez pozytywnej weryfikacji,
+            # niezależnie od tego, skąd zostanie wywołane.
+            self.log("Uruchomienie zablokowane - wersja demonstracyjna niezweryfikowana.")
+            return
+
         if not self._apply_ui_to_settings():
             return
 
@@ -669,19 +754,29 @@ class MainWindow(QMainWindow):
 
     def _on_about(self) -> None:
         credits = [f"<b>Autor:</b> {APP_AUTHOR}"]
-        # Pozycja pojawia się tylko, gdy autor logo został podany -
-        # pusta wartość nie zostawia w oknie osieroconej etykiety.
+        # Pozycje pojawiają się tylko, gdy zostały wypełnione - pusta wartość
+        # nie zostawia w oknie osieroconej etykiety.
         if APP_LOGO_AUTHOR.strip():
             credits.append(f"<b>Autor logo:</b> {APP_LOGO_AUTHOR}")
+        if APP_CONTACT.strip():
+            credits.append(f"<b>Kontakt:</b> {APP_CONTACT}")
 
-        QMessageBox.about(
-            self,
-            f"O programie — {APP_NAME}",
+        version_line = f"wersja {APP_VERSION}"
+        if IS_DEMO:
+            version_line += " — wersja demonstracyjna"
+
+        body = (
             f"<b>{APP_NAME}</b><br>"
-            f"wersja {APP_VERSION}<br><br>"
+            f"{version_line}<br><br>"
             f"{APP_DESCRIPTION}<br><br>"
-            + "<br>".join(credits),
+            + "<br>".join(credits)
         )
+
+        if IS_DEMO:
+            license_html = LICENSE_TEXT.replace("\n\n", "<br><br>").replace("\n", "<br>")
+            body += f"<br><br><hr><small>{license_html}</small>"
+
+        QMessageBox.about(self, f"O programie — {APP_NAME}", body)
 
     def _on_clients_lost(self, labels: list) -> None:
         """Alarm o zamkniętym środowisku - jednorazowy, bez dźwięku."""
@@ -849,4 +944,10 @@ class MainWindow(QMainWindow):
         self.stop_monitoring()
         self._sound.stop()
         self._overlay.hide_alarm(emit_signal=False)
+
+        # Weryfikacja mogła jeszcze trwać (zapytanie sieciowe) w momencie
+        # zamykania okna - czekamy krótko, żeby wątek zakończył się czysto.
+        if self._license_worker is not None and self._license_worker.isRunning():
+            self._license_worker.wait(2000)
+
         event.accept()

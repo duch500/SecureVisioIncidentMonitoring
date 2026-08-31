@@ -77,6 +77,14 @@ if defined ICON (
     )
 )
 
+REM Warunki korzystania musza trafic do odbiorcy razem z programem.
+if exist "LICENCJA.txt" (
+    copy /Y "LICENCJA.txt" "dist\LICENCJA.txt" >nul
+    echo Skopiowano LICENCJA.txt do dist\
+) else (
+    echo UWAGA: brak pliku LICENCJA.txt - nie zostanie dolaczony do wydania.
+)
+
 echo.
 echo ==========================================
 echo Gotowe: %EXE%

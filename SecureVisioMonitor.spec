@@ -36,6 +36,8 @@ a = Analysis(
         # dynamicznie i nie sa wykrywane automatycznie.
         "winrt.windows.data.xml.dom",
         "winrt.windows.ui.notifications",
+        # Weryfikacja wersji demonstracyjnej - odczyt rejestru i zapytania NTP.
+        "winreg",
     ],
     hookspath=[],
     hooksconfig={},

@@ -9,8 +9,27 @@ from __future__ import annotations
 
 APP_NAME = "SecureVisio Monitor"
 APP_AUTHOR = "Maciej Adamiok"
+# Autor logo/ikony aplikacji. Pusty string ukrywa tę pozycję w oknie
+# "O programie" - wpisz nazwisko, gdy logo pochodzi od innej osoby.
 APP_LOGO_AUTHOR = "Dawid Zelinka"
-APP_VERSION = "1.1"
+# Kontakt pokazywany przy blokadzie wersji demonstracyjnej i w oknie
+# "O programie". Pusty string ukrywa tę pozycję.
+APP_CONTACT = "Pisz na TEAMS"
+APP_VERSION = "1.2"
+
+# Oznaczenie wersji demonstracyjnej - widoczne w tytule okna i w oknie
+# "O programie". Ustaw na False dla wersji bez ograniczeń czasowych.
+IS_DEMO = True
+DEMO_PERIOD_DAYS = 7
+
+LICENSE_TEXT = (
+    "Wersja demonstracyjna, udostępniona wyłącznie do celów testowych.\n\n"
+    "Program stanowi własność autora. Bez jego pisemnej zgody zabronione jest:\n"
+    "kopiowanie i rozpowszechnianie programu, modyfikowanie go, dekompilacja "
+    "oraz odtwarzanie kodu źródłowego, a także omijanie zabezpieczeń "
+    "ograniczających okres używania.\n\n"
+    "Korzystanie z programu oznacza akceptację powyższych warunków."
+)
 APP_DESCRIPTION = (
     "Monitorowanie wielu środowisk SecureVisio i wykrywanie nowych zdarzeń "
     "przez Windows UI Automation."
