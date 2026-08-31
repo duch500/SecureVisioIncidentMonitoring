@@ -26,6 +26,13 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ..config import (
+    DEFAULT_COLOR_CONNECTION,
+    DEFAULT_COLOR_EVENT,
+    DEFAULT_COLOR_UNAVAILABLE,
+    contrast_text_color,
+)
+
 logger = logging.getLogger(__name__)
 
 ALARM_TITLE = "NOWE ZDARZENIE"
@@ -37,30 +44,52 @@ ALARM_TITLE_CONNECTION = "ZERWANE POŁĄCZENIE"
 # z odległości, a to jest alarm, nie raport.
 MAX_VISIBLE_ENTRIES = 6
 
-# Dwa warianty kolorystyczne: czerwony dla zdarzeń wymagających obsługi,
-# pomarańczowy dla zamkniętego środowiska. Rozróżnienie pozwala ocenić
-# rodzaj alarmu bez czytania napisu.
-_STYLE_BACKGROUND = "background-color: rgb(180, 0, 0);"
-_STYLE_BACKGROUND_UNAVAILABLE = "background-color: rgb(190, 95, 0);"
-# Fiolet dla zerwanego połączenia - odróżnialny od czerwonego (zdarzenie
-# do obsługi) i pomarańczowego (środowisko zamknięte).
-_STYLE_BACKGROUND_CONNECTION = "background-color: rgb(95, 45, 140);"
-_STYLE_TITLE = "color: white; font-size: 72px; font-weight: bold;"
-_STYLE_ENTRY = "color: white; font-size: 30px;"
-_STYLE_HINT = "color: rgba(255, 255, 255, 180); font-size: 20px;"
-_STYLE_BUTTON = """
-QPushButton {
-    color: rgb(150, 0, 0);
-    background-color: white;
+# Kolory tła pochodzą z ustawień użytkownika. Kolor tekstu dobierany jest
+# automatycznie do jasności tła - przy jasnym kolorze biały napis byłby
+# nieczytelny.
+
+
+def _style_title(text_color: str) -> str:
+    return f"color: {text_color}; font-size: 72px; font-weight: bold;"
+
+
+def _style_entry(text_color: str) -> str:
+    return f"color: {text_color}; font-size: 30px;"
+
+
+def _style_hint(text_color: str) -> str:
+    # Podpowiedź celowo słabiej widoczna niż główna treść.
+    opacity = "rgba(255, 255, 255, 180)" if text_color == "#FFFFFF" else "rgba(0, 0, 0, 150)"
+    return f"color: {opacity}; font-size: 20px;"
+
+
+def _style_button(background: str, text_color: str) -> str:
+    """Buduje styl przycisku odwrócony względem tła alarmu.
+
+    Przy ciemnym tle alarmu przycisk jest jasny z ciemnym napisem, przy jasnym -
+    odwrotnie. Użycie koloru tła alarmu jako koloru napisu działa tylko dla
+    ciemnych tł: na jasnym tle (np. żółtym) napis stawał się nieczytelny.
+    """
+    if text_color == "#FFFFFF":
+        # Ciemne tło alarmu - jasny przycisk z napisem w kolorze tła.
+        button_bg, button_fg, hover = "white", background, "rgb(240, 240, 240)"
+    else:
+        # Jasne tło alarmu - ciemny przycisk z jasnym napisem.
+        button_bg, button_fg, hover = "#1A1A1A", "white", "#333333"
+
+    return f"""
+QPushButton {{
+    color: {button_fg};
+    background-color: {button_bg};
     font-size: 22px;
     font-weight: bold;
     padding: 8px 28px;
     border: none;
     border-radius: 6px;
-}
-QPushButton:hover {
-    background-color: rgb(255, 235, 235);
-}
+}}
+QPushButton:hover {{
+    background-color: {hover};
+}}
 """
 
 
@@ -76,7 +105,7 @@ class AlarmScreen(QWidget):
         title: str,
         entries: list[tuple[str, str]],
         hint: str,
-        background: str = _STYLE_BACKGROUND,
+        background: str = DEFAULT_COLOR_EVENT,
         with_buttons: bool = True,
     ) -> None:
         super().__init__()
@@ -84,15 +113,20 @@ class AlarmScreen(QWidget):
             Qt.WindowStaysOnTopHint | Qt.FramelessWindowHint | Qt.Tool
         )
         self.setGeometry(geometry)
-        self.setStyleSheet(background)
+        self.setStyleSheet(f"background-color: {background};")
         self.setCursor(Qt.PointingHandCursor)
+
+        # Kolor tekstu dobrany do jasności tła wybranego przez użytkownika.
+        text_color = contrast_text_color(background)
+        self._background = background
+        self._text_color = text_color
 
         layout = QVBoxLayout(self)
         layout.setAlignment(Qt.AlignCenter)
         layout.setSpacing(14)
 
         title_label = QLabel(title)
-        title_label.setStyleSheet(_STYLE_TITLE)
+        title_label.setStyleSheet(_style_title(text_color))
         title_label.setAlignment(Qt.AlignCenter)
         layout.addWidget(title_label)
         layout.addSpacing(20)
@@ -104,13 +138,13 @@ class AlarmScreen(QWidget):
         remaining = len(entries) - len(visible)
         if remaining > 0:
             more_label = QLabel(f"...i {remaining} więcej")
-            more_label.setStyleSheet(_STYLE_ENTRY)
+            more_label.setStyleSheet(_style_entry(text_color))
             more_label.setAlignment(Qt.AlignCenter)
             layout.addWidget(more_label)
 
         layout.addSpacing(24)
         hint_label = QLabel(hint)
-        hint_label.setStyleSheet(_STYLE_HINT)
+        hint_label.setStyleSheet(_style_hint(text_color))
         hint_label.setAlignment(Qt.AlignCenter)
         layout.addWidget(hint_label)
 
@@ -122,14 +156,14 @@ class AlarmScreen(QWidget):
         row.setSpacing(24)
 
         label = QLabel(f"{location}   —   {client}")
-        label.setStyleSheet(_STYLE_ENTRY)
+        label.setStyleSheet(_style_entry(self._text_color))
         label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         label.setMinimumWidth(420)
         row.addWidget(label)
 
         if with_buttons:
             button = QPushButton("Pokaż")
-            button.setStyleSheet(_STYLE_BUTTON)
+            button.setStyleSheet(_style_button(self._background, self._text_color))
             button.setCursor(Qt.PointingHandCursor)
             button.clicked.connect(lambda _=False, c=client: self.show_requested.emit(c))
             row.addWidget(button)
@@ -164,11 +198,23 @@ class AlarmOverlay(QWidget):
     def __init__(self, display_seconds: int = 10) -> None:
         super().__init__()
         self._display_seconds = display_seconds
+        # Kolory tła dla trzech rodzajów alarmu - nadpisywane z ustawień
+        # przez set_colors(). Wartości domyślne pozwalają używać klasy
+        # samodzielnie (np. w skrypcie podglądu alarmu).
+        self._color_event = DEFAULT_COLOR_EVENT
+        self._color_unavailable = DEFAULT_COLOR_UNAVAILABLE
+        self._color_connection = DEFAULT_COLOR_CONNECTION
         self._screens: list[AlarmScreen] = []
         self._entry_count = 0
         self._timer = QTimer(self)
         self._timer.setSingleShot(True)
         self._timer.timeout.connect(self._on_timeout)
+
+    def set_colors(self, event: str, unavailable: str, connection: str) -> None:
+        """Ustawia kolory tła alarmów zgodnie z konfiguracją użytkownika."""
+        self._color_event = event
+        self._color_unavailable = unavailable
+        self._color_connection = connection
 
     @property
     def is_visible(self) -> bool:
@@ -205,17 +251,17 @@ class AlarmOverlay(QWidget):
 
         if connection_error:
             title = ALARM_TITLE_CONNECTION
-            background = _STYLE_BACKGROUND_CONNECTION
+            background = self._color_connection
             hint = "Kliknij „Pokaż”, aby przejść do środowiska"
             with_buttons = True
         elif unavailable:
             title = ALARM_TITLE_UNAVAILABLE
-            background = _STYLE_BACKGROUND_UNAVAILABLE
+            background = self._color_unavailable
             hint = "Kliknij, aby zamknąć"
             with_buttons = False
         else:
             title = ALARM_TITLE
-            background = _STYLE_BACKGROUND
+            background = self._color_event
             hint = "Kliknij tło, aby potwierdzić wszystkie"
             with_buttons = True
 

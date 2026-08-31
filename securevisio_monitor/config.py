@@ -35,6 +35,13 @@ DEFAULT_CONNECTION_ERROR_PHRASES = (
     "Connection error",
 )
 
+# Domyślne kolory tła alarmów pełnoekranowych (format #RRGGBB).
+# Czerwony - nowe zdarzenie, pomarańczowy - zamknięte środowisko,
+# fioletowy - zerwane połączenie.
+DEFAULT_COLOR_EVENT = "#B40000"
+DEFAULT_COLOR_UNAVAILABLE = "#BE5F00"
+DEFAULT_COLOR_CONNECTION = "#5F2D8C"
+
 ALARM_MODE_FULLSCREEN = "fullscreen"
 ALARM_MODE_TOAST = "toast"
 ALARM_MODES = (ALARM_MODE_FULLSCREEN, ALARM_MODE_TOAST)
@@ -42,6 +49,35 @@ ALARM_MODES = (ALARM_MODE_FULLSCREEN, ALARM_MODE_TOAST)
 # Zabezpieczenie przed błędem w konfiguracji (np. wpisanym ręcznie 0 lub
 # ujemną wartością), który zamieniłby monitor w pętlę obciążającą CPU.
 MIN_INTERVAL_SEC = 2
+
+
+def _is_valid_color(value: str) -> bool:
+    """Sprawdza format #RRGGBB - inne wartości mogłyby zepsuć wygląd alarmu."""
+    if not isinstance(value, str) or len(value) != 7 or not value.startswith("#"):
+        return False
+    try:
+        int(value[1:], 16)
+        return True
+    except ValueError:
+        return False
+
+
+def contrast_text_color(background: str) -> str:
+    """Dobiera czytelny kolor tekstu (biały albo ciemny) do podanego tła.
+
+    Użytkownik może wybrać dowolny kolor, w tym bardzo jasny - wtedy stały
+    biały napis byłby nieczytelny. Jasność liczona wzorem uwzględniającym
+    różną wrażliwość oka na składowe barwne.
+    """
+    if not _is_valid_color(background):
+        return "#FFFFFF"
+
+    r = int(background[1:3], 16)
+    g = int(background[3:5], 16)
+    b = int(background[5:7], 16)
+    luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255
+
+    return "#1A1A1A" if luminance > 0.6 else "#FFFFFF"
 
 
 class ConfigError(Exception):
@@ -95,6 +131,9 @@ class AppSettings:
         connection_error_phrases: Frazy rozpoznające zerwanie połączenia
             w oknie dialogu błędu SecureVisio.
         detect_connection_errors: Czy wykrywać zerwanie połączenia.
+        color_event: Tło alarmu o nowym zdarzeniu (#RRGGBB).
+        color_unavailable: Tło alarmu o zamkniętym środowisku (#RRGGBB).
+        color_connection: Tło alarmu o zerwanym połączeniu (#RRGGBB).
         alarm_mode: Sposób alarmowania - "fullscreen" (pełnoekranowe ekrany
             na wszystkich monitorach) albo "toast" (powiadomienia systemowe
             Windows w rogu ekranu).
@@ -113,6 +152,9 @@ class AppSettings:
     detect_connection_errors: bool = True
     connection_error_phrases: tuple[str, ...] = DEFAULT_CONNECTION_ERROR_PHRASES
     alarm_mode: str = ALARM_MODE_FULLSCREEN
+    color_event: str = DEFAULT_COLOR_EVENT
+    color_unavailable: str = DEFAULT_COLOR_UNAVAILABLE
+    color_connection: str = DEFAULT_COLOR_CONNECTION
     sound_enabled: bool = True
     sound_file: str = ""
     sound_volume: int = 80
@@ -130,6 +172,13 @@ class AppSettings:
             raise ConfigError("alarm_repeat_sec musi być dodatnie.")
         if not 0 <= self.sound_volume <= 100:
             raise ConfigError("sound_volume musi mieścić się w zakresie 0-100.")
+        for name in ("color_event", "color_unavailable", "color_connection"):
+            value = getattr(self, name)
+            if not _is_valid_color(value):
+                raise ConfigError(
+                    f"{name} musi być kolorem w formacie #RRGGBB (otrzymano '{value}')."
+                )
+
         if self.alarm_mode not in ALARM_MODES:
             raise ConfigError(
                 f"alarm_mode musi być jedną z wartości: {', '.join(ALARM_MODES)} "
@@ -226,6 +275,9 @@ class AppSettings:
                 data.get("connection_error_phrases", DEFAULT_CONNECTION_ERROR_PHRASES)
             ),
             alarm_mode=data.get("alarm_mode", ALARM_MODE_FULLSCREEN),
+            color_event=data.get("color_event", DEFAULT_COLOR_EVENT),
+            color_unavailable=data.get("color_unavailable", DEFAULT_COLOR_UNAVAILABLE),
+            color_connection=data.get("color_connection", DEFAULT_COLOR_CONNECTION),
             sound_enabled=data.get("sound_enabled", True),
             sound_file=data.get("sound_file", ""),
             sound_volume=data.get("sound_volume", 80),

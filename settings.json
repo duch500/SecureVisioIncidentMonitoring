@@ -8,7 +8,16 @@
     "New Event"
   ],
   "alert_on_first_scan": true,
-  "alarm_mode": "toast",
+  "detect_connection_errors": true,
+  "connection_error_phrases": [
+    "Błąd połączenia",
+    "nawiązać połączenia",
+    "Connection error"
+  ],
+  "alarm_mode": "fullscreen",
+  "color_event": "#B40000",
+  "color_unavailable": "#BE5F00",
+  "color_connection": "#5F2D8C",
   "sound_enabled": false,
   "sound_file": "alarm_domyslny.wav",
   "sound_volume": 80,

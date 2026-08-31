@@ -21,7 +21,9 @@ from pathlib import Path
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QColor, QIcon
 from PySide6.QtWidgets import (
+    QApplication,
     QCheckBox,
+    QColorDialog,
     QComboBox,
     QFileDialog,
     QGroupBox,
@@ -52,8 +54,12 @@ from ..alert_manager import AlertManager
 from ..config import (
     ALARM_MODE_FULLSCREEN,
     ALARM_MODE_TOAST,
+    DEFAULT_COLOR_CONNECTION,
+    DEFAULT_COLOR_EVENT,
+    DEFAULT_COLOR_UNAVAILABLE,
     AppSettings,
     ConfigError,
+    contrast_text_color,
     save_settings,
 )
 from ..icon import find_icon
@@ -103,6 +109,14 @@ class MainWindow(QMainWindow):
         self._settings = settings
         self._worker: Optional[MonitorWorker] = None
 
+        # Kolory alarmów z konfiguracji - trzymane osobno, żeby wybór w oknie
+        # dialogowym działał od razu, jeszcze przed zapisaniem ustawień.
+        self._colors = {
+            "event": settings.color_event,
+            "unavailable": settings.color_unavailable,
+            "connection": settings.color_connection,
+        }
+
         self._overlay = AlarmOverlay(display_seconds=settings.alarm_display_sec)
         self._alerts = AlertManager(
             display=self._overlay,
@@ -135,7 +149,7 @@ class MainWindow(QMainWindow):
         self._reminder_timer.setInterval(1000)
         self._reminder_timer.timeout.connect(self._on_reminder_tick)
 
-        self.setWindowTitle("SecureVisio Monitor")
+        self.setWindowTitle(APP_NAME)
 
         # Ustawienie ikony bezpośrednio na oknie, niezależnie od
         # QApplication.setWindowIcon() wywoływanego w app.py. Zabezpieczenie
@@ -238,9 +252,44 @@ class MainWindow(QMainWindow):
         layout.addLayout(flags_row)
 
         layout.addLayout(self._build_alarm_mode_row())
+        layout.addLayout(self._build_colors_row())
         layout.addLayout(self._build_sound_row())
 
         return group
+
+    def _build_colors_row(self) -> QHBoxLayout:
+        row = QHBoxLayout()
+        row.addWidget(QLabel("Kolory alarmów:"))
+
+        # Każdy przycisk pokazuje aktualny kolor jako własne tło - podgląd
+        # bez potrzeby otwierania okna wyboru.
+        self.btn_color_event = QPushButton("Nowe zdarzenie")
+        self.btn_color_event.clicked.connect(
+            lambda: self._pick_color("event", "Kolor alarmu o nowym zdarzeniu")
+        )
+        row.addWidget(self.btn_color_event)
+
+        self.btn_color_unavailable = QPushButton("Środowisko zamknięte")
+        self.btn_color_unavailable.clicked.connect(
+            lambda: self._pick_color("unavailable", "Kolor alarmu o zamkniętym środowisku")
+        )
+        row.addWidget(self.btn_color_unavailable)
+
+        self.btn_color_connection = QPushButton("Zerwane połączenie")
+        self.btn_color_connection.clicked.connect(
+            lambda: self._pick_color("connection", "Kolor alarmu o zerwanym połączeniu")
+        )
+        row.addWidget(self.btn_color_connection)
+
+        self.btn_colors_reset = QPushButton("Domyślne")
+        self.btn_colors_reset.clicked.connect(self._reset_colors)
+        row.addWidget(self.btn_colors_reset)
+
+        self.lbl_colors_note = QLabel("")
+        row.addWidget(self.lbl_colors_note)
+
+        row.addStretch()
+        return row
 
     def _build_alarm_mode_row(self) -> QHBoxLayout:
         row = QHBoxLayout()
@@ -297,6 +346,67 @@ class MainWindow(QMainWindow):
 
         row.addStretch()
         return row
+
+    def _color_buttons(self) -> dict:
+        return {
+            "event": self.btn_color_event,
+            "unavailable": self.btn_color_unavailable,
+            "connection": self.btn_color_connection,
+        }
+
+    def _apply_color_previews(self) -> None:
+        """Maluje przyciski na wybrane kolory, z czytelnym tekstem."""
+        for key, button in self._color_buttons().items():
+            color = self._colors[key]
+            text_color = contrast_text_color(color)
+            button.setStyleSheet(
+                f"background-color: {color}; color: {text_color};"
+                "padding: 4px 10px; font-weight: bold;"
+            )
+
+    def _pick_color(self, key: str, title: str) -> None:
+        current = QColor(self._colors[key])
+        chosen = QColorDialog.getColor(current, self, title)
+        if not chosen.isValid():
+            return
+
+        self._colors[key] = chosen.name().upper()
+        self._apply_color_previews()
+        self._apply_colors_to_overlay()
+
+    def _reset_colors(self) -> None:
+        self._colors = {
+            "event": DEFAULT_COLOR_EVENT,
+            "unavailable": DEFAULT_COLOR_UNAVAILABLE,
+            "connection": DEFAULT_COLOR_CONNECTION,
+        }
+        self._apply_color_previews()
+        self._apply_colors_to_overlay()
+        self.log("Przywrócono domyślne kolory alarmów.")
+
+    def _apply_colors_to_overlay(self) -> None:
+        self._overlay.set_colors(
+            self._colors["event"],
+            self._colors["unavailable"],
+            self._colors["connection"],
+        )
+
+    def _update_colors_note(self) -> None:
+        """Informuje, że kolory nie dotyczą powiadomień systemowych.
+
+        Wygląd powiadomień Windows kontroluje system operacyjny - bez tej
+        informacji użytkownik mógłby uznać, że ustawienie nie działa.
+        """
+        toast = self._toast_mode()
+        for button in self._color_buttons().values():
+            button.setEnabled(not toast)
+        self.btn_colors_reset.setEnabled(not toast)
+
+        if toast:
+            self.lbl_colors_note.setText("(nie dotyczy powiadomień Windows)")
+            self.lbl_colors_note.setStyleSheet("color: #777777;")
+        else:
+            self.lbl_colors_note.setText("")
 
     def _refresh_sound_list(self) -> None:
         """Odświeża listę dostępnych dźwięków z katalogu sounds/."""
@@ -363,6 +473,15 @@ class MainWindow(QMainWindow):
             self.cb_alarm_mode.setCurrentIndex(mode_index)
         self._update_alarm_mode_note()
 
+        self._colors = {
+            "event": s.color_event,
+            "unavailable": s.color_unavailable,
+            "connection": s.color_connection,
+        }
+        self._apply_color_previews()
+        self._apply_colors_to_overlay()
+        self._update_colors_note()
+
         self.chk_sound.setChecked(s.sound_enabled)
         self._refresh_sound_list()
         if s.sound_file:
@@ -398,6 +517,9 @@ class MainWindow(QMainWindow):
             self._settings.alarm_repeat_sec = self.sb_repeat.value()
             self._settings.alert_on_first_scan = self.chk_first_scan.isChecked()
             self._settings.alarm_mode = self.cb_alarm_mode.currentData()
+            self._settings.color_event = self._colors["event"]
+            self._settings.color_unavailable = self._colors["unavailable"]
+            self._settings.color_connection = self._colors["connection"]
             self._settings.sound_enabled = self.chk_sound.isChecked()
             self._settings.sound_file = self.cb_sound.currentData() or ""
             self._settings.sound_volume = self.sl_volume.value()
@@ -658,6 +780,7 @@ class MainWindow(QMainWindow):
         self._alerts.force_hide()
         self._last_toast_at = None
         self._update_alarm_mode_note()
+        self._update_colors_note()
 
     def _update_alarm_mode_note(self) -> None:
         """Ostrzega, gdy wybrano tryb powiadomień bez dostępnego mechanizmu."""
@@ -669,8 +792,8 @@ class MainWindow(QMainWindow):
 
     def _on_about(self) -> None:
         credits = [f"<b>Autor:</b> {APP_AUTHOR}"]
-        # Pozycja pojawia się tylko, gdy autor logo został podany -
-        # pusta wartość nie zostawia w oknie osieroconej etykiety.
+        # Pozycja pojawia się tylko, gdy autor logo został podany - pusta
+        # wartość nie zostawia w oknie osieroconej etykiety.
         if APP_LOGO_AUTHOR.strip():
             credits.append(f"<b>Autor logo:</b> {APP_LOGO_AUTHOR}")
 
@@ -848,5 +971,14 @@ class MainWindow(QMainWindow):
         self._apply_ui_to_settings()
         self.stop_monitoring()
         self._sound.stop()
+        self._toast_sound_timer.stop()
+        self._toasts.clear_all()
         self._overlay.hide_alarm(emit_signal=False)
+
         event.accept()
+
+        # Aplikacja działa z wyłączonym automatycznym zamykaniem po zniknięciu
+        # ostatniego okna (ekrany alarmu pojawiają się i znikają wielokrotnie),
+        # dlatego zamknięcie okna głównego musi jawnie zakończyć pętlę zdarzeń.
+        # Bez tego proces zostawałby w tle mimo braku widocznego okna.
+        QApplication.quit()
