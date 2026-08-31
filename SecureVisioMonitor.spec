@@ -34,6 +34,8 @@ a = Analysis(
         "win32process",
         # Powiadomienia systemowe Windows. Moduly winrt sa ladowane
         # dynamicznie i nie sa wykrywane automatycznie.
+        "PySide6.QtNetwork",
+        "PySide6.QtMultimedia",
         "winrt.windows.data.xml.dom",
         "winrt.windows.ui.notifications",
     ],
@@ -48,7 +50,6 @@ a = Analysis(
         "numpy",
         "PIL",
         "pytest",
-        "PySide6.QtNetwork",
         "PySide6.QtQml",
         "PySide6.QtQuick",
         "PySide6.QtWebEngineCore",
