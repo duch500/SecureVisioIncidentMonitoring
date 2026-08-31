@@ -11,6 +11,8 @@ Instrukcja nie wymaga wiedzy programistycznej.
 - [Przygotowanie komputera (tylko wersja źródłowa)](#przygotowanie-komputera-tylko-wersja-źródłowa)
 - [Pierwsze uruchomienie i konfiguracja](#pierwsze-uruchomienie-i-konfiguracja)
 - [Codzienna obsługa](#codzienna-obsługa)
+- [Sposób alarmowania: pełny ekran czy powiadomienia Windows](#sposób-alarmowania-pełny-ekran-czy-powiadomienia-windows)
+- [Kolory alarmów](#kolory-alarmów)
 - [Ustawienia](#ustawienia)
 - [Gdy coś nie działa](#gdy-coś-nie-działa)
 - [Gdzie szukać informacji](#gdzie-szukać-informacji)
@@ -22,7 +24,7 @@ Instrukcja nie wymaga wiedzy programistycznej.
 
 Kiedy pracujesz z kilkoma środowiskami SecureVisio jednocześnie, łatwo przeoczyć moment, w którym w jednym z nich pojawia się nowe zdarzenie. Trzeba pamiętać, żeby regularnie zaglądać do każdego okna po kolei.
 
-**SecureVisio Monitor robi to za Ciebie.** Co kilkanaście sekund sprawdza wszystkie środowiska naraz, a gdy pojawi się nowe zdarzenie — wyświetla na wszystkich monitorach duży czerwony ekran i odtwarza sygnał dźwiękowy.
+**SecureVisio Monitor robi to za Ciebie.** Co kilkanaście sekund sprawdza wszystkie środowiska naraz, a gdy pojawi się nowe zdarzenie — alarmuje w sposób, który sam wybierzesz: dużym czerwonym ekranem na wszystkich monitorach albo powiadomieniem systemowym Windows w rogu ekranu, w obu przypadkach z sygnałem dźwiękowym.
 
 ### Co program potrafi
 
@@ -32,6 +34,9 @@ Kiedy pracujesz z kilkoma środowiskami SecureVisio jednocześnie, łatwo przeoc
 - ✅ Informuje, którego klienta dotyczy zdarzenie
 - ✅ Pozwala jednym kliknięciem otworzyć na pełnym ekranie środowisko, w którym coś się wydarzyło
 - ✅ Budzi sygnałem dźwiękowym — przydatne podczas dyżuru nocnego
+- ✅ Wykrywa też, gdy SecureVisio straci połączenie z serwerem albo gdy jakieś środowisko zostanie zamknięte
+- ✅ Pozwala wybrać, czy alarm ma być pełnoekranowy, czy w formie powiadomienia Windows
+- ✅ Pozwala dowolnie ustawić kolor tła każdego rodzaju alarmu
 
 ### Czego program nie robi
 
@@ -41,7 +46,7 @@ Kiedy pracujesz z kilkoma środowiskami SecureVisio jednocześnie, łatwo przeoc
 - ❌ Nie zapisuje historii zdarzeń
 
 > [!IMPORTANT]
-> **Najważniejsza zasada działania:** program alarmuje w momencie pojawienia się nowego zdarzenia, a nie przez cały czas, gdy ono istnieje. Oznacza to, że dostaniesz jeden alarm na jedno zdarzenie. Jeżeli zdarzenie nie zostanie obsłużone, program przypomni o nim po minucie — chyba że wcześniej klikniesz w ekran alarmu, potwierdzając, że je widzisz. Gdy pojawi się kolejne, nowe zdarzenie, alarm zabrzmi ponownie.
+> **Najważniejsza zasada działania:** program alarmuje w momencie pojawienia się nowego zdarzenia, a nie przez cały czas, gdy ono istnieje. Oznacza to, że dostaniesz jeden alarm na jedno zdarzenie. Jeżeli zdarzenie nie zostanie obsłużone, program przypomni o nim po minucie — chyba że wcześniej potwierdzisz, że je widzisz. Gdy pojawi się kolejne, nowe zdarzenie, alarm zabrzmi ponownie.
 
 ## Co trzeba przygotować
 
@@ -187,10 +192,10 @@ Sprawdź, czy wszystko się zgadza:
 Zanim zdasz się na program, przekonaj się, że alarm działa i jest dla Ciebie widoczny.
 
 1. Kliknij przycisk **„Testuj alarm"** w prawym dolnym rogu
-2. Na wszystkich monitorach powinien pojawić się czerwony ekran z napisem **NOWE ZDARZENIE**
-3. Kliknij w dowolne miejsce, żeby go zamknąć
+2. Zależnie od wybranego [sposobu alarmowania](#sposób-alarmowania-pełny-ekran-czy-powiadomienia-windows) pojawi się czerwony ekran na wszystkich monitorach albo powiadomienie Windows w rogu ekranu
+3. Zamknij alarm — kliknij w tło (tryb pełnoekranowy) albo w powiadomienie (tryb Windows)
 
-✔️ Alarm pojawił się na każdym monitorze i zniknął po kliknięciu.
+✔️ Alarm pojawił się i dał się zamknąć.
 
 Sprawdź też dźwięk — kliknij przycisk **„Odtwórz"** obok listy dźwięków. Kliknij ponownie, żeby przerwać.
 
@@ -210,21 +215,33 @@ Sprawdź też dźwięk — kliknij przycisk **„Odtwórz"** obok listy dźwięk
 
 ### Co widzisz, gdy pojawi się zdarzenie
 
-Na wszystkich monitorach wyświetli się czerwony ekran z napisem **NOWE ZDARZENIE**, a pod nim lista — miejsce zdarzenia i nazwa klienta. Jednocześnie zabrzmi sygnał dźwiękowy.
+W trybie pełnoekranowym: na wszystkich monitorach wyświetli się czerwony ekran z napisem **NOWE ZDARZENIE**, a pod nim lista — miejsce zdarzenia i nazwa klienta. W trybie powiadomień Windows: w rogu ekranu pojawi się osobne powiadomienie dla każdego zdarzenia. W obu trybach jednocześnie zabrzmi sygnał dźwiękowy.
 
-Masz dwie możliwości:
+Masz kilka możliwości:
 
 | Co robisz | Co się dzieje |
 |---|---|
-| Klikasz w tło ekranu (poza przyciskami) | Alarm znika, dźwięk milknie. Program uznaje, że widziałeś zdarzenie i nie będzie o nim przypominał. Okna SecureVisio pozostają nietknięte |
+| Klikasz w tło ekranu / treść powiadomienia | Alarm znika, dźwięk milknie. Program uznaje, że widziałeś zdarzenie i nie będzie o nim przypominał. Okna SecureVisio pozostają nietknięte |
 | Klikasz przycisk „Pokaż" przy danej pozycji | To środowisko SecureVisio otwiera się na pełnym ekranie, żebyś od razu widział incydent |
-| Nie robisz nic | Alarm znika po 10 sekundach, ale wróci po minucie, dopóki zdarzenie nie zostanie obsłużone |
+| Nie robisz nic | Alarm znika (po 10 sekundach w trybie pełnoekranowym albo zgodnie z ustawieniami Windows w trybie powiadomień), ale wróci po minucie, dopóki zdarzenie nie zostanie obsłużone |
 
-> Gdy alarm dotyczy kilku środowisk naraz, kliknięcie „Pokaż" przy jednym z nich otwiera to środowisko, a alarm pozostaje widoczny na pozostałych monitorach — możesz zająć się nimi po kolei.
+> Gdy alarm dotyczy kilku środowisk naraz w trybie pełnoekranowym, kliknięcie „Pokaż" przy jednym z nich otwiera to środowisko, a alarm pozostaje widoczny na pozostałych monitorach — możesz zająć się nimi po kolei. W trybie powiadomień Windows każde zdarzenie ma osobne powiadomienie, więc obsługujesz je niezależnie.
+
+### Dwa pozostałe rodzaje alarmu
+
+Poza czerwonym alarmem o nowym zdarzeniu program sygnalizuje jeszcze dwie sytuacje:
+
+| Alarm | Kiedy się pojawia | Jak się zachowuje |
+|---|---|---|
+| 🟠 Środowisko zamknięte | Okno SecureVisio zniknęło (zamknięte albo przestało odpowiadać) | Pojawia się raz, bez dźwięku, bez przycisku „Pokaż" — nie ma czego pokazać |
+| 🟣 Zerwane połączenie | SecureVisio zgłosiło błąd połączenia z serwerem | Pojawia się raz, bez dźwięku, z przyciskiem „Pokaż" — żebyś mógł od razu przejść do okna i kliknąć „Ponów próbę" |
+
+> [!NOTE]
+> Gdy środowisko zgłasza zerwane połączenie, dane, które program wcześniej odczytał z niego, mogą być nieaktualne. Monitorowanie nowych zdarzeń dla tego środowiska jest wtedy wstrzymane, dopóki połączenie nie wróci — program da Ci znać w logu, gdy tak się stanie.
 
 ### Zakończenie pracy
 
-Kliknij **„Stop"**, żeby wstrzymać monitorowanie, albo zamknij okno programu krzyżykiem — ustawienia zapiszą się automatycznie.
+Kliknij **„Stop"**, żeby wstrzymać monitorowanie, albo zamknij okno programu krzyżykiem — ustawienia zapiszą się automatycznie, a program zakończy działanie całkowicie (nie zostaje w tle).
 
 > Zamknięcie programu kasuje pamięć o potwierdzonych zdarzeniach. Po ponownym uruchomieniu nieobsłużone zdarzenia mogą wywołać alarm jeszcze raz. Jeżeli Ci to przeszkadza, odznacz pole „Alarmuj o zdarzeniach zastanych przy starcie".
 
@@ -238,6 +255,37 @@ Kliknij **„Stop"**, żeby wstrzymać monitorowanie, albo zamknij okno programu
 | Testuj alarm | Pokazuje przykładowy alarm — do sprawdzenia widoczności |
 | Dodaj plik... | Dodaje własny dźwięk alarmu |
 | Odtwórz | Odtwarza wybrany dźwięk, żebyś mógł go posłuchać |
+| O programie | Pokazuje informacje o autorze i wersji programu |
+
+## Sposób alarmowania: pełny ekran czy powiadomienia Windows
+
+W ustawieniach, w polu **„Sposób alarmowania"**, wybierasz jeden z dwóch trybów — nie mogą działać oba naraz.
+
+| Tryb | Jak wygląda | Kiedy wybrać |
+|---|---|---|
+| Pełny ekran (wszystkie monitory) | Duży, kolorowy ekran zajmujący całą powierzchnię każdego monitora | Gdy chcesz, żeby alarmu nie dało się przeoczyć — dobre na dyżur nocny |
+| Powiadomienia Windows (róg ekranu) | Standardowe powiadomienie systemowe, jak inne aplikacje Windows | Gdy pracujesz na wielu rzeczach naraz i wolisz mniej inwazyjny sygnał |
+
+> [!TIP]
+> Przełączenie trybu w trakcie monitorowania jest zablokowane — zatrzymaj monitorowanie („Stop"), zmień tryb, uruchom ponownie („Start").
+
+> [!WARNING]
+> Jeżeli wybierzesz powiadomienia Windows, a z jakiegoś powodu nie da się ich wyświetlić (np. ograniczenia systemowe), program automatycznie pokaże zamiast tego alarm pełnoekranowy — żebyś na pewno dostał sygnał. Informacja o tym pojawi się w logu.
+
+## Kolory alarmów
+
+W ustawieniach, w wierszu **„Kolory alarmów"**, możesz zmienić kolor tła dla każdego z trzech rodzajów alarmu osobno: nowego zdarzenia, zamkniętego środowiska i zerwanego połączenia.
+
+1. Kliknij przycisk odpowiadający rodzajowi alarmu, który chcesz zmienić — przycisk pokazuje aktualnie ustawiony kolor
+2. Wybierz nowy kolor w oknie, które się otworzy, i potwierdź
+3. Zmiana obowiązuje od razu, przy najbliższym alarmie tego rodzaju
+
+Kolor tekstu na alarmie dobiera się sam do wybranego tła — nie musisz się martwić, że jasny kolor tła zrobi napis nieczytelnym.
+
+Żeby wrócić do kolorów domyślnych (czerwony / pomarańczowy / fioletowy), kliknij **„Domyślne"**.
+
+> [!NOTE]
+> Wybór koloru dotyczy wyłącznie trybu pełnoekranowego. Wygląd powiadomień Windows kontroluje system operacyjny — gdy masz wybrany tryb powiadomień, przyciski wyboru koloru są wyszarzone.
 
 ## Ustawienia
 
@@ -248,10 +296,12 @@ Wszystkie ustawienia znajdują się w środkowej części okna i zapisują się 
 | Katalog środowisk | Miejsce na dysku, gdzie trzymasz środowiska SecureVisio | Gdy przeniesiesz środowiska w inne miejsce |
 | Frazy nowego zdarzenia | Napisy w kolumnie Status, na które program ma reagować | Gdy Twoje SecureVisio używa innego napisu (patrz niżej) |
 | Interwał | Co ile sekund program sprawdza środowiska | Rzadko — domyślne 10 s jest bezpieczne |
-| Alarm widoczny | Ile sekund wyświetla się czerwony ekran | Gdy 10 sekund to dla Ciebie za krótko lub za długo |
+| Alarm widoczny | Ile sekund wyświetla się ekran alarmu (tryb pełnoekranowy) | Gdy 10 sekund to dla Ciebie za krótko lub za długo |
 | Przypomnienie po | Po ilu sekundach alarm wraca, jeśli go nie potwierdzisz | Gdy chcesz częstsze lub rzadsze przypomnienia |
 | Alarmuj o zdarzeniach zastanych | Czy alarmować o zdarzeniach istniejących już przy starcie | Odznacz, jeśli restart programu ma nie powtarzać alarmów |
 | Tryb diagnostyczny | Zapisuje szczegółowe informacje do pliku | Tylko gdy szukasz przyczyny problemu |
+| Sposób alarmowania | Pełny ekran albo powiadomienia Windows | Patrz [sekcja wyżej](#sposób-alarmowania-pełny-ekran-czy-powiadomienia-windows) |
+| Kolory alarmów | Kolor tła każdego rodzaju alarmu | Patrz [sekcja wyżej](#kolory-alarmów) |
 | Dźwięk alarmu | Włącza sygnał dźwiękowy i pozwala wybrać plik | Odznacz, gdy pracujesz w ciszy |
 | Głośność | Głośność sygnału względem głośności systemu | Ustaw raz, na początku |
 
@@ -312,14 +362,14 @@ Po zmianie kliknij **„Stop"**, a następnie **„Start"**, żeby ustawienie za
 </details>
 
 <details>
-<summary><strong>Środowisko zniknęło z tabeli i pojawił się pomarańczowy ekran</strong></summary>
+<summary><strong>Środowisko zniknęło z tabeli i pojawił się pomarańczowy alarm</strong></summary>
 
-**Co widzisz:** Ekran z napisem ŚRODOWISKO ZAMKNIĘTE i nazwą klienta.
+**Co widzisz:** Alarm z napisem ŚRODOWISKO ZAMKNIĘTE i nazwą klienta.
 
 **Dlaczego:** Okno SecureVisio zostało zamknięte lub przestało odpowiadać. Program informuje, że przestał je pilnować.
 
 **Co zrobić:**
-1. Kliknij w ekran, żeby go zamknąć
+1. Zamknij alarm (kliknij w tło albo w powiadomienie)
 2. Jeżeli zamknąłeś to środowisko celowo — nic więcej nie musisz robić
 3. Jeżeli nie — uruchom SecureVisio ponownie, ustaw widok „Incydenty". Program sam je wykryje i wznowi monitorowanie
 
@@ -328,9 +378,25 @@ Po zmianie kliknij **„Stop"**, a następnie **„Start"**, żeby ustawienie za
 </details>
 
 <details>
+<summary><strong>Pojawił się fioletowy alarm ZERWANE POŁĄCZENIE</strong></summary>
+
+**Co widzisz:** Alarm z napisem ZERWANE POŁĄCZENIE i nazwą klienta, z przyciskiem „Pokaż".
+
+**Dlaczego:** SecureVisio zgłosiło błąd połączenia z serwerem — zwykle widać wtedy w samym SecureVisio okno z komunikatem i przyciskiem „Ponów próbę".
+
+**Co zrobić:**
+1. Kliknij „Pokaż", żeby przejść od razu do tego środowiska
+2. W oknie SecureVisio kliknij „Ponów próbę" (albo postępuj zgodnie z tym, co pokazuje SecureVisio)
+3. Program sam wykryje przywrócenie połączenia i wznowi monitorowanie tego środowiska
+
+✔️ W polu „Log bieżący" pojawia się wpis, że połączenie zostało przywrócone.
+
+</details>
+
+<details>
 <summary><strong>Nie słyszę dźwięku alarmu</strong></summary>
 
-**Co widzisz:** Czerwony ekran się pojawia, ale bez dźwięku.
+**Co widzisz:** Alarm się pojawia, ale bez dźwięku.
 
 **Dlaczego:** Dźwięk może być wyłączony w programie, wyciszony w systemie albo ustawiony na zbyt niski poziom.
 
@@ -356,6 +422,21 @@ Po zmianie kliknij **„Stop"**, a następnie **„Start"**, żeby ustawienie za
 2. Jeżeli chcesz przywrócić suwak, zgłoś to osobie, która przekazała Ci program
 
 ✔️ Dźwięk alarmu jest słyszalny na odpowiednim poziomie.
+
+</details>
+
+<details>
+<summary><strong>Przyciski wyboru koloru są wyszarzone</strong></summary>
+
+**Co widzisz:** W wierszu „Kolory alarmów" przyciski nie reagują na kliknięcie, widoczna jest notka „(nie dotyczy powiadomień Windows)".
+
+**Dlaczego:** Masz wybrany tryb powiadomień Windows — ich wyglądem steruje system, nie program.
+
+**Co zrobić:**
+
+Zmień „Sposób alarmowania" na „Pełny ekran", jeżeli chcesz mieć możliwość zmiany kolorów.
+
+✔️ Przyciski kolorów stają się aktywne.
 
 </details>
 
@@ -404,7 +485,7 @@ Po zmianie kliknij **„Stop"**, a następnie **„Start"**, żeby ustawienie za
 
 ### Log w oknie programu
 
-Pole **„Log bieżący"** na dole okna pokazuje, co program robił: kiedy wykrył zdarzenie, kiedy je potwierdziłeś, kiedy środowisko zniknęło lub wróciło. To pierwsze miejsce, do którego warto zajrzeć.
+Pole **„Log bieżący"** na dole okna pokazuje, co program robił: kiedy wykrył zdarzenie, kiedy je potwierdziłeś, kiedy środowisko zniknęło, wróciło albo utraciło połączenie. To pierwsze miejsce, do którego warto zajrzeć.
 
 Log czyści się przy zamknięciu programu — jeżeli chcesz coś zachować, zaznacz tekst i skopiuj.
 
@@ -431,7 +512,7 @@ Gdy trzeba zbadać problem dokładniej, zaznacz pole **„Tryb diagnostyczny (sz
 Program nie aktualizuje się sam. Gdy otrzymasz nową wersję:
 
 1. Zamknij program
-2. Zrób kopię pliku `settings.json` z katalogu programu — zawiera Twoje ustawienia. Wystarczy skopiować go na pulpit
+2. Zrób kopię pliku `settings.json` z katalogu programu — zawiera Twoje ustawienia (w tym wybrane kolory). Wystarczy skopiować go na pulpit
 3. Jeżeli masz własne dźwięki, skopiuj też katalog `sounds`
 4. Zastąp pliki programu nowymi
 5. Uruchom program i sprawdź, czy ustawienia są na miejscu
@@ -470,7 +551,7 @@ Program nie aktualizuje się sam. Gdy otrzymasz nową wersję:
 | Chcesz... | Zrób to |
 |---|---|
 | Zobaczyć incydent od razu | Kliknij „Pokaż" przy odpowiedniej pozycji |
-| Tylko zamknąć alarm | Kliknij w tło ekranu, poza przyciskami |
+| Tylko zamknąć alarm | Kliknij w tło ekranu / w treść powiadomienia |
 | Zająć się tym za chwilę | Nie rób nic — alarm wróci za minutę |
 
 ### Kolory w tabeli
@@ -480,13 +561,17 @@ Program nie aktualizuje się sam. Gdy otrzymasz nową wersję:
 | 🟢 Zielony | Wszystko działa | Nic |
 | 🔴 Czerwony | Jest nowe zdarzenie | Obsłuż incydent w SecureVisio |
 | 🟠 Pomarańczowy | Nie da się odczytać środowiska | Sprawdź widok „Incydenty" w tym oknie |
+| 🟣 Fioletowy | Zerwane połączenie z serwerem | Kliknij „Pokaż" i „Ponów próbę" w SecureVisio |
 
-### Kolory ekranów alarmu
+### Rodzaje alarmu
 
-| Ekran | Znaczenie | Pilność |
+| Alarm | Znaczenie | Pilność |
 |---|---|---|
-| 🔴 Czerwony — NOWE ZDARZENIE | Pojawił się incydent do obsłużenia | Wymaga reakcji |
-| 🟠 Pomarańczowy — ŚRODOWISKO ZAMKNIĘTE | Okno SecureVisio zostało zamknięte | Sprawdź, czy to zamierzone |
+| 🔴 NOWE ZDARZENIE | Pojawił się incydent do obsłużenia | Wymaga reakcji |
+| 🟠 ŚRODOWISKO ZAMKNIĘTE | Okno SecureVisio zostało zamknięte | Sprawdź, czy to zamierzone |
+| 🟣 ZERWANE POŁĄCZENIE | SecureVisio utracił połączenie z serwerem | Kliknij „Pokaż" i ponów próbę w SecureVisio |
+
+> Domyślne kolory alarmów można zmienić w ustawieniach — patrz [Kolory alarmów](#kolory-alarmów). Powyższe kolory to ustawienia fabryczne.
 
 ### O czym warto pamiętać
 
@@ -494,4 +579,5 @@ Program nie aktualizuje się sam. Gdy otrzymasz nową wersję:
 - Okna SecureVisio mogą być zminimalizowane — program i tak je czyta
 - Widok „Incydenty" musi być ustawiony w każdym monitorowanym oknie
 - Przy pierwszym prawdziwym zdarzeniu sprawdź, czy napis w kolumnie Status zgadza się z ustawieniami
+- Wybór koloru alarmu dotyczy tylko trybu pełnoekranowego, nie powiadomień Windows
 - Program nie zastępuje obsługi incydentów — tylko informuje, że coś się pojawiło
