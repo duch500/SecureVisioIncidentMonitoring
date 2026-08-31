@@ -144,17 +144,44 @@ class AlarmSound:
         self._volume = 0.8
         self._init_backend()
 
+    @staticmethod
+    def _set_infinite_loop(effect) -> None:
+        """Ustawia nieskończoną pętlę odtwarzania niezależnie od wersji PySide6.
+
+        Starsze wersje wiązania przyjmują QSoundEffect.Infinite jako zwykłą
+        liczbę całkowitą. Nowsze (potwierdzone empirycznie na PySide6 6.11)
+        opakowują tę wartość we własny enum (QSoundEffect.Loop, nie IntEnum),
+        więc przekazanie jej wprost albo rzutowanie int() kończy się TypeError -
+        trzeba jawnie odczytać jego liczbową wartość przez .value. Próbujemy
+        obu wariantów zamiast zakładać jeden, żeby kod działał na obu wersjach.
+        """
+        from PySide6.QtMultimedia import QSoundEffect
+
+        try:
+            effect.setLoopCount(QSoundEffect.Infinite)
+        except TypeError:
+            effect.setLoopCount(QSoundEffect.Infinite.value)
+
     def _init_backend(self) -> None:
         try:
             from PySide6.QtMultimedia import QSoundEffect
 
             self._effect = QSoundEffect()
-            self._effect.setLoopCount(QSoundEffect.Infinite)
+            self._set_infinite_loop(self._effect)
             self._effect.setVolume(self._volume)
             self._backend = "qt"
             return
         except Exception as exc:  # noqa: BLE001
-            logger.debug("QSoundEffect niedostępny (%s), próbuję winsound.", exc)
+            # Świadomie WARNING, nie DEBUG: to zapada raz, na starcie programu,
+            # zanim jest szansa włączyć tryb diagnostyczny w GUI - musi trafić
+            # do logu przy normalnym poziomie, inaczej przyczyna przepada
+            # bezpowrotnie. Typ wyjątku dołączony obok treści, bo sama treść
+            # bywa zbyt ogólna (np. pusty komunikat przy błędach COM/DLL).
+            logger.warning(
+                "QSoundEffect niedostępny (%s: %s) - przechodzę na winsound. "
+                "Regulacja głośności z poziomu programu będzie niedostępna.",
+                type(exc).__name__, exc,
+            )
 
         try:
             import winsound  # noqa: F401
