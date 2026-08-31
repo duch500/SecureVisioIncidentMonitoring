@@ -130,7 +130,19 @@ Zanim uruchomisz monitor, przygotuj środowiska, które ma pilnować.
 >
 > Po ustawieniu widoku możesz spokojnie zminimalizować okna SecureVisio — program czyta je również wtedy, gdy są zminimalizowane. Widok musi być ustawiony w momencie uruchamiania monitorowania.
 
-### Krok 2 — uruchom program
+### Krok 2 — zaakceptuj warunki korzystania
+
+Przy pierwszym uruchomieniu (i po każdej aktualizacji programu) pojawi się okno z treścią pliku `LICENCJA.txt`.
+
+1. Przeczytaj warunki
+2. Kliknij **„Akceptuję"**, żeby przejść dalej
+
+> [!WARNING]
+> Kliknięcie **„Nie akceptuję"** albo zamknięcie tego okna krzyżykiem kończy program natychmiast — okno główne w ogóle się nie pokaże. Żeby uruchomić program ponownie, wystarczy odpalić go jeszcze raz i tym razem zaakceptować warunki.
+
+✔️ Po zaakceptowaniu okno znika i otwiera się główne okno programu. Przy kolejnych uruchomieniach (tej samej wersji programu) ten ekran już się nie pojawi.
+
+### Krok 3 — uruchom program
 
 Zależnie od posiadanej wersji:
 
@@ -143,7 +155,7 @@ Zależnie od posiadanej wersji:
 
 > Wersja gotowa (.exe) uruchamia się przez kilka sekund — to normalne, plik rozpakowuje się przed startem. Nie klikaj wielokrotnie.
 
-### Krok 3 — wskaż, gdzie są środowiska
+### Krok 4 — wskaż, gdzie są środowiska
 
 Program musi wiedzieć, gdzie na dysku znajdują się Twoje środowiska SecureVisio, żeby rozpoznać, które okno należy do którego klienta.
 
@@ -168,7 +180,7 @@ C:\SecureVisio
 
 > Nazwy klientów, które zobaczysz później na alarmie, biorą się z nazw tych katalogów. W przykładzie powyżej będą to: Klient A, Klient B, Klient C.
 
-### Krok 4 — uruchom monitorowanie
+### Krok 5 — uruchom monitorowanie
 
 Kliknij przycisk **„Start"** na dole okna.
 
@@ -187,7 +199,7 @@ Sprawdź, czy wszystko się zgadza:
 
 > Jeżeli któreś środowisko ma stan NIEDOSTĘPNY na pomarańczowym tle — najczęściej oznacza to, że nie jest ustawione na widoku listy incydentów. Wróć do kroku 1, ustaw widok i kliknij „Sprawdź teraz".
 
-### Krok 5 — sprawdź alarm
+### Krok 6 — sprawdź alarm
 
 Zanim zdasz się na program, przekonaj się, że alarm działa i jest dla Ciebie widoczny.
 
@@ -454,6 +466,21 @@ Zmień „Sposób alarmowania" na „Pełny ekran", jeżeli chcesz mieć możliw
 4. Kliknij „Stop", a potem „Start"
 
 ✔️ Przy kolejnym zdarzeniu alarm pojawia się poprawnie.
+
+</details>
+
+<details>
+<summary><strong>Program otwiera się na chwilę i od razu znika</strong></summary>
+
+**Co widzisz:** Krótko mignie okno, po czym program się zamyka — bez błędu, bez dalszego działania.
+
+**Dlaczego:** Najczęściej to przypadkowe kliknięcie „Nie akceptuję" albo krzyżyka w oknie warunków korzystania, które pojawia się przy pierwszym uruchomieniu (i po każdej aktualizacji). Bez zaakceptowania warunków program celowo się nie uruchamia.
+
+**Co zrobić:**
+1. Uruchom program ponownie
+2. W oknie „Warunki korzystania" przeczytaj treść i kliknij **„Akceptuję"**
+
+✔️ Otwiera się główne okno „SecureVisio Monitor".
 
 </details>
 

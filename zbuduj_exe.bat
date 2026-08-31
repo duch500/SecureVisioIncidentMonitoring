@@ -77,6 +77,15 @@ if defined ICON (
     )
 )
 
+REM Warunki korzystania musza trafic do odbiorcy razem z programem -
+REM okno akceptacji licencji czyta ten plik z katalogu obok .exe.
+if exist "LICENCJA.txt" (
+    copy /Y "LICENCJA.txt" "dist\LICENCJA.txt" >nul
+    echo Skopiowano LICENCJA.txt do dist\
+) else (
+    echo UWAGA: brak pliku LICENCJA.txt - okno akceptacji pokaze tekst zastepczy.
+)
+
 echo.
 echo ==========================================
 echo Gotowe: %EXE%
