@@ -7,8 +7,7 @@ Kontakt: TEAMS
 
 ZAKRES UŻYTKOWANIA
 --------------------------------------------------------------
-Program udostępniony jest do użytku wewnętrznego w ramach [tu wpisz
-kontekst, np. nazwę firmy / zespołu / celu udostępnienia]. Korzystanie
+Program udostępniony jest do użytku wewnętrznego. Korzystanie
 z programu w innym zakresie wymaga uprzedniej zgody autora.
 
 Program stanowi własność autora. Bez jego pisemnej zgody zabronione jest:
