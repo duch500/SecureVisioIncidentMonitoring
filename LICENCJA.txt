@@ -1,0 +1,23 @@
+SecureVisio Monitor — wersja 1.2
+WARUNKI KORZYSTANIA (WERSJA PEŁNA)
+==============================================================
+
+Autor: Maciej Adamiok
+
+Program stanowi własność autora. Bez jego pisemnej zgody zabronione jest:
+kopiowanie i rozpowszechnianie programu, modyfikowanie go, dekompilacja oraz odtwarzanie kodu źródłowego.
+
+Korzystanie z programu oznacza akceptację powyższych warunków.
+
+PRZETWARZANE DANE
+--------------------------------------------------------------
+Program działa wyłącznie lokalnie. Nie przesyła żadnych danych o incydentach,
+środowiskach ani o użytkowniku na zewnątrz.
+
+BRAK GWARANCJI
+--------------------------------------------------------------
+Program udostępniany jest w stanie, w jakim się znajduje, bez jakiejkolwiek
+gwarancji. Autor nie ponosi odpowiedzialności za skutki jego użycia,
+w szczególności za nieskuteczne wykrycie zdarzenia w systemie SecureVisio.
+Program stanowi narzędzie pomocnicze i nie zastępuje standardowych procedur
+monitorowania bezpieczeństwa.
