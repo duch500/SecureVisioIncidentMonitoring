@@ -1,13 +1,23 @@
 SecureVisio Monitor — wersja 1.2
-WARUNKI KORZYSTANIA (WERSJA PEŁNA)
+WARUNKI KORZYSTANIA
 ==============================================================
 
 Autor: Maciej Adamiok
+Kontakt: TEAMS
+
+ZAKRES UŻYTKOWANIA
+--------------------------------------------------------------
+Program udostępniony jest do użytku wewnętrznego w ramach [tu wpisz
+kontekst, np. nazwę firmy / zespołu / celu udostępnienia]. Korzystanie
+z programu w innym zakresie wymaga uprzedniej zgody autora.
 
 Program stanowi własność autora. Bez jego pisemnej zgody zabronione jest:
-kopiowanie i rozpowszechnianie programu, modyfikowanie go, dekompilacja oraz odtwarzanie kodu źródłowego.
+kopiowanie i rozpowszechnianie programu poza wskazany wyżej zakres,
+modyfikowanie go, a także dekompilacja i odtwarzanie kodu źródłowego.
 
-Korzystanie z programu oznacza akceptację powyższych warunków.
+Korzystanie z programu oznacza akceptację powyższych warunków. W razie
+pytań co do zakresu dozwolonego użycia — skontaktuj się z autorem pod
+adresem podanym powyżej, zamiast zakładać zgodę milczącą.
 
 PRZETWARZANE DANE
 --------------------------------------------------------------
