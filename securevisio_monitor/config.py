@@ -134,6 +134,10 @@ class AppSettings:
         color_event: Tło alarmu o nowym zdarzeniu (#RRGGBB).
         color_unavailable: Tło alarmu o zamkniętym środowisku (#RRGGBB).
         color_connection: Tło alarmu o zerwanym połączeniu (#RRGGBB).
+        license_accepted: Czy warunki korzystania (LICENCJA.txt) zostały
+            zaakceptowane przy uruchomieniu.
+        license_accepted_version: Wersja programu, dla której zapisano
+            akceptację. Zmiana wersji wymusza ponowne pokazanie warunków.
         alarm_mode: Sposób alarmowania - "fullscreen" (pełnoekranowe ekrany
             na wszystkich monitorach) albo "toast" (powiadomienia systemowe
             Windows w rogu ekranu).
@@ -155,6 +159,8 @@ class AppSettings:
     color_event: str = DEFAULT_COLOR_EVENT
     color_unavailable: str = DEFAULT_COLOR_UNAVAILABLE
     color_connection: str = DEFAULT_COLOR_CONNECTION
+    license_accepted: bool = False
+    license_accepted_version: str = ""
     sound_enabled: bool = True
     sound_file: str = ""
     sound_volume: int = 80
@@ -278,6 +284,8 @@ class AppSettings:
             color_event=data.get("color_event", DEFAULT_COLOR_EVENT),
             color_unavailable=data.get("color_unavailable", DEFAULT_COLOR_UNAVAILABLE),
             color_connection=data.get("color_connection", DEFAULT_COLOR_CONNECTION),
+            license_accepted=data.get("license_accepted", False),
+            license_accepted_version=data.get("license_accepted_version", ""),
             sound_enabled=data.get("sound_enabled", True),
             sound_file=data.get("sound_file", ""),
             sound_volume=data.get("sound_volume", 80),

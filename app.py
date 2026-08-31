@@ -13,9 +13,10 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication, QMessageBox
 
-from securevisio_monitor.config import ConfigError, load_settings
+from securevisio_monitor.about import APP_NAME, APP_VERSION
+from securevisio_monitor.config import ConfigError, load_settings, save_settings
+from securevisio_monitor.gui.license_dialog import LicenseAgreementDialog
 from securevisio_monitor.gui.main_window import MainWindow
-from securevisio_monitor.about import APP_NAME
 from securevisio_monitor.icon import find_icon
 from securevisio_monitor.logging_setup import setup_logging
 from securevisio_monitor.notifications import register_app_id
@@ -66,13 +67,37 @@ def main() -> int:
 
         settings = AppSettings()
 
+    # Warunki korzystania pokazujemy raz - dopóki nie zmieni się wersja
+    # programu. Zapis akceptacji jest lekki (zwykły settings.json, bez
+    # ochrony przed ręczną edycją) - celem jest wyeliminowanie sytuacji
+    # "nie widziałem warunków", nie uniemożliwienie obejścia.
+    if settings.license_accepted_version != APP_VERSION:
+        dialog = LicenseAgreementDialog()
+        if dialog.exec() != LicenseAgreementDialog.Accepted:
+            logger.info("Warunki korzystania odrzucone - program się nie uruchomi.")
+            return 0
+
+        settings.license_accepted = True
+        settings.license_accepted_version = APP_VERSION
+        try:
+            save_settings(settings)
+        except ConfigError as exc:
+            logger.warning("Nie udało się zapisać akceptacji warunków: %s", exc)
+
     window = MainWindow(settings)
     window.show()
 
-    # Aplikacja kończy się dopiero po zamknięciu okna głównego.
-    window.destroyed.connect(app.quit)
+    # Zakończenie aplikacji obsługuje MainWindow.closeEvent - wywołuje
+    # QApplication.quit() po zatrzymaniu wątku monitorującego. Poleganie na
+    # sygnale destroyed nie działa, bo zamknięcie okna domyślnie tylko je
+    # ukrywa, nie niszczy obiektu.
+    exit_code = app.exec()
 
-    return app.exec()
+    # Ostatnia linia obrony: gdyby jakikolwiek wątek albo obiekt COM
+    # (powiadomienia systemowe Windows) utrzymywał proces przy życiu,
+    # kończymy go jawnie zamiast zostawiać w tle.
+    logger.debug("Pętla zdarzeń zakończona, kod wyjścia: %s", exit_code)
+    return exit_code
 
 
 if __name__ == "__main__":
