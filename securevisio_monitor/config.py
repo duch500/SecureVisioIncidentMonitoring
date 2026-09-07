@@ -42,6 +42,12 @@ DEFAULT_COLOR_EVENT = "#B40000"
 DEFAULT_COLOR_UNAVAILABLE = "#BE5F00"
 DEFAULT_COLOR_CONNECTION = "#5F2D8C"
 
+# Motywy okna głównego. Niezależne od motywu systemu Windows - użytkownik
+# wybiera jawnie w ustawieniach.
+THEME_LIGHT = "light"
+THEME_DARK = "dark"
+THEMES = (THEME_LIGHT, THEME_DARK)
+
 ALARM_MODE_FULLSCREEN = "fullscreen"
 ALARM_MODE_TOAST = "toast"
 ALARM_MODES = (ALARM_MODE_FULLSCREEN, ALARM_MODE_TOAST)
@@ -138,11 +144,16 @@ class AppSettings:
             zaakceptowane przy uruchomieniu.
         license_accepted_version: Wersja programu, dla której zapisano
             akceptację. Zmiana wersji wymusza ponowne pokazanie warunków.
+        theme: Motyw okna głównego ("light" albo "dark").
         alarm_mode: Sposób alarmowania - "fullscreen" (pełnoekranowe ekrany
             na wszystkich monitorach) albo "toast" (powiadomienia systemowe
             Windows w rogu ekranu).
         sound_enabled: Czy odtwarzać dźwięk przy alarmie o nowym zdarzeniu.
         sound_file: Nazwa pliku z katalogu sounds/. Pusta oznacza domyślny.
+        sound_enabled_unavailable: Dźwięk przy alarmie o zamkniętym środowisku.
+        sound_file_unavailable: Plik dźwiękowy dla zamkniętego środowiska.
+        sound_enabled_connection: Dźwięk przy alarmie o zerwanym połączeniu.
+        sound_file_connection: Plik dźwiękowy dla zerwanego połączenia.
         sound_volume: Głośność 0-100, nakładana na głośność systemu.
         clients: Lista skonfigurowanych profili klientów.
     """
@@ -156,6 +167,7 @@ class AppSettings:
     detect_connection_errors: bool = True
     connection_error_phrases: tuple[str, ...] = DEFAULT_CONNECTION_ERROR_PHRASES
     alarm_mode: str = ALARM_MODE_FULLSCREEN
+    theme: str = THEME_LIGHT
     color_event: str = DEFAULT_COLOR_EVENT
     color_unavailable: str = DEFAULT_COLOR_UNAVAILABLE
     color_connection: str = DEFAULT_COLOR_CONNECTION
@@ -163,6 +175,13 @@ class AppSettings:
     license_accepted_version: str = ""
     sound_enabled: bool = True
     sound_file: str = ""
+    # Alarmy o zamkniętym środowisku i zerwanym połączeniu domyślnie ciche -
+    # to problemy techniczne, nie incydenty wymagające natychmiastowej reakcji.
+    # Użytkownik może włączyć dla nich dźwięk niezależnie.
+    sound_enabled_unavailable: bool = False
+    sound_file_unavailable: str = ""
+    sound_enabled_connection: bool = False
+    sound_file_connection: str = ""
     sound_volume: int = 80
     clients: list[ClientProfile] = field(default_factory=list)
 
@@ -184,6 +203,12 @@ class AppSettings:
                 raise ConfigError(
                     f"{name} musi być kolorem w formacie #RRGGBB (otrzymano '{value}')."
                 )
+
+        if self.theme not in THEMES:
+            raise ConfigError(
+                f"theme musi być jedną z wartości: {', '.join(THEMES)} "
+                f"(otrzymano '{self.theme}')."
+            )
 
         if self.alarm_mode not in ALARM_MODES:
             raise ConfigError(
@@ -281,6 +306,7 @@ class AppSettings:
                 data.get("connection_error_phrases", DEFAULT_CONNECTION_ERROR_PHRASES)
             ),
             alarm_mode=data.get("alarm_mode", ALARM_MODE_FULLSCREEN),
+            theme=data.get("theme", THEME_LIGHT),
             color_event=data.get("color_event", DEFAULT_COLOR_EVENT),
             color_unavailable=data.get("color_unavailable", DEFAULT_COLOR_UNAVAILABLE),
             color_connection=data.get("color_connection", DEFAULT_COLOR_CONNECTION),
@@ -288,6 +314,10 @@ class AppSettings:
             license_accepted_version=data.get("license_accepted_version", ""),
             sound_enabled=data.get("sound_enabled", True),
             sound_file=data.get("sound_file", ""),
+            sound_enabled_unavailable=data.get("sound_enabled_unavailable", False),
+            sound_file_unavailable=data.get("sound_file_unavailable", ""),
+            sound_enabled_connection=data.get("sound_enabled_connection", False),
+            sound_file_connection=data.get("sound_file_connection", ""),
             sound_volume=data.get("sound_volume", 80),
             clients=clients,
         )

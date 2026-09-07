@@ -12,7 +12,7 @@ APP_AUTHOR = "Maciej Adamiok"
 # Autor logo/ikony aplikacji. Pusty string ukrywa tę pozycję w oknie
 # "O programie" - wpisz nazwisko, gdy logo pochodzi od innej osoby.
 APP_LOGO_AUTHOR = "Dawid Zelinka"
-APP_VERSION = "1.2"
+APP_VERSION = "1.3"
 APP_DESCRIPTION = (
     "Monitorowanie wielu środowisk SecureVisio i wykrywanie nowych zdarzeń "
     "przez Windows UI Automation."

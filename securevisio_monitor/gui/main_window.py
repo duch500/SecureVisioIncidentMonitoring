@@ -18,10 +18,11 @@ from typing import Optional
 
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import QEasingCurve, QPropertyAnimation, Qt, QTimer
 from PySide6.QtGui import QColor, QIcon
 from PySide6.QtWidgets import (
     QApplication,
+    QGraphicsOpacityEffect,
     QCheckBox,
     QColorDialog,
     QComboBox,
@@ -54,6 +55,8 @@ from ..alert_manager import AlertManager
 from ..config import (
     ALARM_MODE_FULLSCREEN,
     ALARM_MODE_TOAST,
+    THEME_DARK,
+    THEME_LIGHT,
     DEFAULT_COLOR_CONNECTION,
     DEFAULT_COLOR_EVENT,
     DEFAULT_COLOR_UNAVAILABLE,
@@ -80,6 +83,7 @@ from ..window_resolver import (
 )
 from ..worker import ClientStatus, MonitorWorker
 from .overlays import AlarmOverlay
+from .themes import build_stylesheet, get_palette
 
 logger = logging.getLogger(__name__)
 
@@ -89,16 +93,8 @@ MAX_LOG_LINES = 300
 
 COLUMNS = ["Klient", "Stan", "Ostatni odczyt", "Incydenty", "Czas odczytu", "Uwagi"]
 
-_COLOR_OK = QColor(215, 245, 215)
-_COLOR_ALERT = QColor(255, 205, 205)
-_COLOR_ERROR = QColor(255, 230, 190)
-# Zerwane połączenie - odpowiednik fioletu z ekranu alarmu.
-_COLOR_CONNECTION = QColor(226, 214, 245)
-
-# Tła komórek są jasne niezależnie od motywu systemu, więc kolor tekstu musi
-# być ustawiony jawnie - w trybie ciemnym Windows domyślny biały tekst byłby
-# na nich nieczytelny.
-_COLOR_TEXT = QColor(25, 25, 25)
+# Kolory wierszy tabeli pochodzą z palety motywu (gui/themes.py) - stałe
+# wartości ustąpiły miejsca ustawieniu wybieranemu przez użytkownika.
 
 
 class MainWindow(QMainWindow):
@@ -151,6 +147,15 @@ class MainWindow(QMainWindow):
 
         self.setWindowTitle(APP_NAME)
 
+        # Motyw okna - niezależny od ustawień Windows. Paleta wpływa też na
+        # kolory wierszy tabeli, dlatego trzymamy ją jako pole, a nie
+        # odczytujemy przy każdym odświeżeniu.
+        self._theme = settings.theme
+        self._palette = get_palette(self._theme)
+        # Ostatnio wyświetlone statusy - potrzebne, żeby przemalować tabelę
+        # po zmianie motywu bez czekania na kolejny cykl monitorowania.
+        self._last_statuses: list[ClientStatus] = []
+
         # Ustawienie ikony bezpośrednio na oknie, niezależnie od
         # QApplication.setWindowIcon() wywoływanego w app.py. Zabezpieczenie
         # na wypadek, gdyby w danej konfiguracji Windows/Qt ikona aplikacji
@@ -160,6 +165,7 @@ class MainWindow(QMainWindow):
             self.setWindowIcon(QIcon(str(icon_path)))
         self.resize(900, 620)
         self._build_ui()
+        self._apply_theme()
         self._load_settings_to_ui()
 
     # --- Budowa interfejsu -------------------------------------------------
@@ -170,9 +176,65 @@ class MainWindow(QMainWindow):
         layout = QVBoxLayout(central)
 
         layout.addWidget(self._build_status_group(), stretch=3)
+        layout.addLayout(self._build_settings_toggle())
         layout.addWidget(self._build_settings_group())
         layout.addWidget(self._build_log_group(), stretch=2)
         layout.addLayout(self._build_controls())
+
+        # Ustawienia startują zwinięte - operator na co dzień patrzy na tabelę
+        # środowisk i log, a nie na konfigurację. Stan nie jest zapamiętywany
+        # między uruchomieniami: po każdym starcie okno wygląda tak samo.
+        self._settings_expanded = False
+        self._settings_group.setMaximumHeight(0)
+        self._settings_group.setVisible(False)
+
+    def _build_settings_toggle(self) -> QHBoxLayout:
+        """Pasek z przyciskiem rozwijającym sekcję ustawień."""
+        row = QHBoxLayout()
+
+        self.btn_settings_toggle = QPushButton("▸  Ustawienia")
+        self.btn_settings_toggle.setCheckable(True)
+        self.btn_settings_toggle.setChecked(False)
+        self.btn_settings_toggle.clicked.connect(self._toggle_settings)
+        self.btn_settings_toggle.setStyleSheet(
+            "text-align: left; padding: 6px 10px; font-weight: bold;"
+        )
+        row.addWidget(self.btn_settings_toggle)
+        row.addStretch()
+
+        return row
+
+    def _toggle_settings(self) -> None:
+        """Rozwija albo zwija sekcję ustawień z płynną animacją wysokości."""
+        self._settings_expanded = not self._settings_expanded
+
+        if self._settings_expanded:
+            self.btn_settings_toggle.setText("▾  Ustawienia")
+            self._settings_group.setVisible(True)
+            # sizeHint() daje docelową wysokość dopiero, gdy widget jest
+            # widoczny - stąd kolejność: najpierw pokaż, potem animuj.
+            target = self._settings_group.sizeHint().height()
+            start, end = 0, target
+        else:
+            self.btn_settings_toggle.setText("▸  Ustawienia")
+            start, end = self._settings_group.height(), 0
+
+        self._settings_animation = QPropertyAnimation(
+            self._settings_group, b"maximumHeight"
+        )
+        self._settings_animation.setDuration(180)
+        self._settings_animation.setStartValue(start)
+        self._settings_animation.setEndValue(end)
+        self._settings_animation.setEasingCurve(QEasingCurve.InOutQuad)
+
+        if not self._settings_expanded:
+            # Ukrycie dopiero po zakończeniu animacji - inaczej sekcja
+            # znikałaby skokowo, zanim zdąży się zwinąć.
+            self._settings_animation.finished.connect(
+                lambda: self._settings_group.setVisible(False)
+            )
+
+        self._settings_animation.start()
 
     def _build_status_group(self) -> QGroupBox:
         group = QGroupBox("Monitorowane środowiska")
@@ -199,7 +261,10 @@ class MainWindow(QMainWindow):
         return group
 
     def _build_settings_group(self) -> QGroupBox:
-        group = QGroupBox("Ustawienia")
+        # Nagłówek grupy pomijamy - jego rolę pełni przycisk rozwijający,
+        # inaczej napis "Ustawienia" dublowałby się na ekranie.
+        group = QGroupBox()
+        self._settings_group = group
         layout = QVBoxLayout(group)
 
         base_row = QHBoxLayout()
@@ -253,7 +318,7 @@ class MainWindow(QMainWindow):
 
         layout.addLayout(self._build_alarm_mode_row())
         layout.addLayout(self._build_colors_row())
-        layout.addLayout(self._build_sound_row())
+        layout.addLayout(self._build_sound_group())
 
         return group
 
@@ -307,119 +372,91 @@ class MainWindow(QMainWindow):
 
         row.addStretch()
 
+        self.btn_theme = QPushButton()
+        self.btn_theme.setFixedWidth(150)
+        self.btn_theme.clicked.connect(self._toggle_theme)
+        row.addWidget(self.btn_theme)
+
         self.btn_about = QPushButton("O programie")
         self.btn_about.clicked.connect(self._on_about)
         row.addWidget(self.btn_about)
 
         return row
 
-    def _build_sound_row(self) -> QHBoxLayout:
-        row = QHBoxLayout()
+    # Definicja trzech niezależnych kanałów dźwięku - klucz, etykieta i pola
+    # konfiguracji. Trzymane w jednym miejscu, żeby dodanie kolejnego rodzaju
+    # alarmu w przyszłości nie wymagało zmian w kilku metodach naraz.
+    SOUND_CHANNELS = (
+        ("event", "Nowe zdarzenie", "sound_enabled", "sound_file"),
+        ("unavailable", "Środowisko zamknięte",
+         "sound_enabled_unavailable", "sound_file_unavailable"),
+        ("connection", "Zerwane połączenie",
+         "sound_enabled_connection", "sound_file_connection"),
+    )
 
-        self.chk_sound = QCheckBox("Dźwięk alarmu:")
-        row.addWidget(self.chk_sound)
+    def _build_sound_group(self) -> QVBoxLayout:
+        """Buduje sekcję dźwięku: osobny wiersz na każdy rodzaj alarmu."""
+        outer = QVBoxLayout()
 
-        self.cb_sound = QComboBox()
-        self.cb_sound.setMinimumWidth(220)
-        row.addWidget(self.cb_sound)
+        header = QHBoxLayout()
+        header.addWidget(QLabel("Dźwięk alarmów:"))
+        header.addSpacing(16)
+        header.addWidget(QLabel("Głośność:"))
 
-        self.btn_add_sound = QPushButton("Dodaj plik...")
-        self.btn_add_sound.clicked.connect(self._on_add_sound)
-        row.addWidget(self.btn_add_sound)
-
-        self.btn_test_sound = QPushButton("Odtwórz")
-        self.btn_test_sound.setCheckable(True)
-        self.btn_test_sound.toggled.connect(self._on_test_sound)
-        row.addWidget(self.btn_test_sound)
-
-        row.addSpacing(16)
-        row.addWidget(QLabel("Głośność:"))
         self.sl_volume = QSlider(Qt.Horizontal)
         self.sl_volume.setRange(0, 100)
         self.sl_volume.setFixedWidth(120)
         self.sl_volume.valueChanged.connect(self._on_volume_changed)
-        row.addWidget(self.sl_volume)
+        header.addWidget(self.sl_volume)
 
         self.lbl_volume = QLabel("80%")
         self.lbl_volume.setFixedWidth(40)
-        row.addWidget(self.lbl_volume)
+        header.addWidget(self.lbl_volume)
+
+        header.addStretch()
+        outer.addLayout(header)
+
+        # Widgety trzymamy w słownikach pod kluczem kanału - dzięki temu
+        # obsługa (zapis, odczyt, odtwarzanie) jest wspólna dla wszystkich
+        # trzech rodzajów, zamiast trzykrotnie powtórzona.
+        self.chk_sounds = {}
+        self.cb_sounds = {}
+        self.btn_test_sounds = {}
+
+        for key, label, _, _ in self.SOUND_CHANNELS:
+            outer.addLayout(self._build_sound_channel_row(key, label))
+
+        return outer
+
+    def _build_sound_channel_row(self, key: str, label: str) -> QHBoxLayout:
+        row = QHBoxLayout()
+        row.addSpacing(12)
+
+        checkbox = QCheckBox(label)
+        checkbox.setMinimumWidth(170)
+        self.chk_sounds[key] = checkbox
+        row.addWidget(checkbox)
+
+        combo = QComboBox()
+        combo.setMinimumWidth(200)
+        self.cb_sounds[key] = combo
+        row.addWidget(combo)
+
+        add_button = QPushButton("Dodaj plik...")
+        add_button.clicked.connect(lambda _=False, k=key: self._on_add_sound(k))
+        row.addWidget(add_button)
+
+        test_button = QPushButton("Odtwórz")
+        test_button.setCheckable(True)
+        test_button.toggled.connect(
+            lambda checked, k=key: self._on_test_sound(checked, k)
+        )
+        self.btn_test_sounds[key] = test_button
+        row.addWidget(test_button)
 
         row.addStretch()
         return row
 
-    def _color_buttons(self) -> dict:
-        return {
-            "event": self.btn_color_event,
-            "unavailable": self.btn_color_unavailable,
-            "connection": self.btn_color_connection,
-        }
-
-    def _apply_color_previews(self) -> None:
-        """Maluje przyciski na wybrane kolory, z czytelnym tekstem."""
-        for key, button in self._color_buttons().items():
-            color = self._colors[key]
-            text_color = contrast_text_color(color)
-            button.setStyleSheet(
-                f"background-color: {color}; color: {text_color};"
-                "padding: 4px 10px; font-weight: bold;"
-            )
-
-    def _pick_color(self, key: str, title: str) -> None:
-        current = QColor(self._colors[key])
-        chosen = QColorDialog.getColor(current, self, title)
-        if not chosen.isValid():
-            return
-
-        self._colors[key] = chosen.name().upper()
-        self._apply_color_previews()
-        self._apply_colors_to_overlay()
-
-    def _reset_colors(self) -> None:
-        self._colors = {
-            "event": DEFAULT_COLOR_EVENT,
-            "unavailable": DEFAULT_COLOR_UNAVAILABLE,
-            "connection": DEFAULT_COLOR_CONNECTION,
-        }
-        self._apply_color_previews()
-        self._apply_colors_to_overlay()
-        self.log("Przywrócono domyślne kolory alarmów.")
-
-    def _apply_colors_to_overlay(self) -> None:
-        self._overlay.set_colors(
-            self._colors["event"],
-            self._colors["unavailable"],
-            self._colors["connection"],
-        )
-
-    def _update_colors_note(self) -> None:
-        """Informuje, że kolory nie dotyczą powiadomień systemowych.
-
-        Wygląd powiadomień Windows kontroluje system operacyjny - bez tej
-        informacji użytkownik mógłby uznać, że ustawienie nie działa.
-        """
-        toast = self._toast_mode()
-        for button in self._color_buttons().values():
-            button.setEnabled(not toast)
-        self.btn_colors_reset.setEnabled(not toast)
-
-        if toast:
-            self.lbl_colors_note.setText("(nie dotyczy powiadomień Windows)")
-            self.lbl_colors_note.setStyleSheet("color: #777777;")
-        else:
-            self.lbl_colors_note.setText("")
-
-    def _refresh_sound_list(self) -> None:
-        """Odświeża listę dostępnych dźwięków z katalogu sounds/."""
-        current = self.cb_sound.currentData()
-        self.cb_sound.clear()
-
-        for path in list_available_sounds():
-            self.cb_sound.addItem(path.stem, path.name)
-
-        if current:
-            index = self.cb_sound.findData(current)
-            if index >= 0:
-                self.cb_sound.setCurrentIndex(index)
 
     def _build_log_group(self) -> QGroupBox:
         group = QGroupBox("Log bieżący")
@@ -482,12 +519,14 @@ class MainWindow(QMainWindow):
         self._apply_colors_to_overlay()
         self._update_colors_note()
 
-        self.chk_sound.setChecked(s.sound_enabled)
-        self._refresh_sound_list()
-        if s.sound_file:
-            index = self.cb_sound.findData(s.sound_file)
-            if index >= 0:
-                self.cb_sound.setCurrentIndex(index)
+        self._refresh_sound_lists()
+        for key, _, enabled_field, file_field in self.SOUND_CHANNELS:
+            self.chk_sounds[key].setChecked(getattr(s, enabled_field))
+            file_name = getattr(s, file_field)
+            if file_name:
+                index = self.cb_sounds[key].findData(file_name)
+                if index >= 0:
+                    self.cb_sounds[key].setCurrentIndex(index)
         self.sl_volume.setValue(s.sound_volume)
         self._sound.set_volume(s.sound_volume / 100)
 
@@ -517,11 +556,13 @@ class MainWindow(QMainWindow):
             self._settings.alarm_repeat_sec = self.sb_repeat.value()
             self._settings.alert_on_first_scan = self.chk_first_scan.isChecked()
             self._settings.alarm_mode = self.cb_alarm_mode.currentData()
+            self._settings.theme = self._theme
             self._settings.color_event = self._colors["event"]
             self._settings.color_unavailable = self._colors["unavailable"]
             self._settings.color_connection = self._colors["connection"]
-            self._settings.sound_enabled = self.chk_sound.isChecked()
-            self._settings.sound_file = self.cb_sound.currentData() or ""
+            for key, _, enabled_field, file_field in self.SOUND_CHANNELS:
+                setattr(self._settings, enabled_field, self.chk_sounds[key].isChecked())
+                setattr(self._settings, file_field, self.cb_sounds[key].currentData() or "")
             self._settings.sound_volume = self.sl_volume.value()
         except ConfigError as exc:
             QMessageBox.warning(self, "Nieprawidłowe ustawienia", str(exc))
@@ -535,6 +576,81 @@ class MainWindow(QMainWindow):
             self.log(f"Uwaga: nie udało się zapisać ustawień ({exc}).")
 
         return True
+
+    # --- Motyw okna ---------------------------------------------------------
+
+    def _apply_theme(self, animate: bool = False) -> None:
+        """Stosuje bieżący motyw do całego okna.
+
+        Args:
+            animate: Gdy True, zmiana następuje z krótkim przenikaniem.
+                Przy starcie programu animacja jest zbędna (nie ma z czego
+                przenikać), przy ręcznym przełączeniu - poprawia odbiór.
+        """
+        self._palette = get_palette(self._theme)
+        self.btn_theme.setText(
+            "◐  Motyw: ciemny" if self._theme == THEME_DARK else "◑  Motyw: jasny"
+        )
+
+        if not animate:
+            self.setStyleSheet(build_stylesheet(self._palette, self._theme))
+            self._refresh_theme_dependent_widgets()
+            return
+
+        # Przenikanie: wygaszamy okno, podmieniamy style w najciemniejszym
+        # momencie, po czym rozjaśniamy z powrotem. Podmiana stylu w trakcie
+        # animacji jest niewidoczna, więc zmiana wygląda płynnie mimo że sama
+        # w sobie jest skokowa.
+        effect = QGraphicsOpacityEffect(self)
+        self.centralWidget().setGraphicsEffect(effect)
+
+        fade_out = QPropertyAnimation(effect, b"opacity", self)
+        fade_out.setDuration(120)
+        fade_out.setStartValue(1.0)
+        fade_out.setEndValue(0.35)
+        fade_out.setEasingCurve(QEasingCurve.InOutQuad)
+
+        fade_in = QPropertyAnimation(effect, b"opacity", self)
+        fade_in.setDuration(160)
+        fade_in.setStartValue(0.35)
+        fade_in.setEndValue(1.0)
+        fade_in.setEasingCurve(QEasingCurve.InOutQuad)
+
+        def swap_styles() -> None:
+            self.setStyleSheet(build_stylesheet(self._palette, self._theme))
+            self._refresh_theme_dependent_widgets()
+            fade_in.start()
+
+        def cleanup() -> None:
+            # Efekt trzeba zdjąć - pozostawiony obniża wydajność rysowania
+            # i potrafi psuć odświeżanie widgetów potomnych.
+            self.centralWidget().setGraphicsEffect(None)
+
+        fade_out.finished.connect(swap_styles)
+        fade_in.finished.connect(cleanup)
+
+        self._theme_animation = fade_out
+        self._theme_fade_in = fade_in
+        fade_out.start()
+
+    def _refresh_theme_dependent_widgets(self) -> None:
+        """Odświeża elementy, których kolory nie wynikają z arkusza stylów.
+
+        Kolory wierszy tabeli i podglądy kolorów alarmów ustawiane są
+        programowo, więc arkusz stylów ich nie obejmuje - trzeba je przemalować
+        ręcznie po każdej zmianie motywu.
+        """
+        self._apply_color_previews()
+        if self._last_statuses:
+            self._refresh_table(self._last_statuses)
+
+    def _toggle_theme(self) -> None:
+        self._theme = THEME_LIGHT if self._theme == THEME_DARK else THEME_DARK
+        self._apply_theme(animate=True)
+        self.log(
+            "Zmieniono motyw na "
+            + ("ciemny." if self._theme == THEME_DARK else "jasny.")
+        )
 
     # --- Sterowanie monitorowaniem ----------------------------------------
 
@@ -613,50 +729,66 @@ class MainWindow(QMainWindow):
 
     # --- Dźwięk ------------------------------------------------------------
 
-    def _selected_sound_path(self) -> Optional[Path]:
-        name = self.cb_sound.currentData()
-        if not name:
-            return ensure_default_sound()
-        path = SOUNDS_DIR / name
-        return path if path.exists() else ensure_default_sound()
+    def _color_buttons(self) -> dict:
+        return {
+            "event": self.btn_color_event,
+            "unavailable": self.btn_color_unavailable,
+            "connection": self.btn_color_connection,
+        }
 
-    def _on_volume_changed(self, value: int) -> None:
-        self.lbl_volume.setText(f"{value}%")
-        self._sound.set_volume(value / 100)
-
-    def _on_add_sound(self) -> None:
-        path_str, _ = QFileDialog.getOpenFileName(
-            self, "Wybierz plik dźwiękowy", "", "Pliki WAV (*.wav)"
-        )
-        if not path_str:
-            return
-
-        imported = import_sound(Path(path_str))
-        if imported is None:
-            QMessageBox.warning(
-                self,
-                "Nie udało się dodać pliku",
-                "Plik nie został skopiowany. Upewnij się, że to poprawny plik .wav.",
+    def _apply_color_previews(self) -> None:
+        """Maluje przyciski na wybrane kolory, z czytelnym tekstem."""
+        for key, button in self._color_buttons().items():
+            color = self._colors[key]
+            text_color = contrast_text_color(color)
+            button.setStyleSheet(
+                f"background-color: {color}; color: {text_color};"
+                "padding: 4px 10px; font-weight: bold;"
             )
+
+    def _pick_color(self, key: str, title: str) -> None:
+        current = QColor(self._colors[key])
+        chosen = QColorDialog.getColor(current, self, title)
+        if not chosen.isValid():
             return
 
-        self._refresh_sound_list()
-        index = self.cb_sound.findData(imported.name)
-        if index >= 0:
-            self.cb_sound.setCurrentIndex(index)
-        self.log(f"Dodano dźwięk: {imported.name}")
+        self._colors[key] = chosen.name().upper()
+        self._apply_color_previews()
+        self._apply_colors_to_overlay()
 
-    def _on_test_sound(self, playing: bool) -> None:
-        if playing:
-            self._sound.play(self._selected_sound_path())
-            self.btn_test_sound.setText("Zatrzymaj")
+    def _reset_colors(self) -> None:
+        self._colors = {
+            "event": DEFAULT_COLOR_EVENT,
+            "unavailable": DEFAULT_COLOR_UNAVAILABLE,
+            "connection": DEFAULT_COLOR_CONNECTION,
+        }
+        self._apply_color_previews()
+        self._apply_colors_to_overlay()
+        self.log("Przywrócono domyślne kolory alarmów.")
+
+    def _apply_colors_to_overlay(self) -> None:
+        self._overlay.set_colors(
+            self._colors["event"],
+            self._colors["unavailable"],
+            self._colors["connection"],
+        )
+
+    def _update_colors_note(self) -> None:
+        """Informuje, że kolory nie dotyczą powiadomień systemowych.
+
+        Wygląd powiadomień Windows kontroluje system operacyjny - bez tej
+        informacji użytkownik mógłby uznać, że ustawienie nie działa.
+        """
+        toast = self._toast_mode()
+        for button in self._color_buttons().values():
+            button.setEnabled(not toast)
+        self.btn_colors_reset.setEnabled(not toast)
+
+        if toast:
+            self.lbl_colors_note.setText("(nie dotyczy powiadomień Windows)")
+            self.lbl_colors_note.setStyleSheet("color: #777777;")
         else:
-            self._sound.stop()
-            self.btn_test_sound.setText("Odtwórz")
-
-    def _start_alarm_sound(self) -> None:
-        if self.chk_sound.isChecked():
-            self._sound.play(self._selected_sound_path())
+            self.lbl_colors_note.setText("")
 
     # --- Przywracanie okna z poziomu alarmu -------------------------------
 
@@ -744,16 +876,98 @@ class MainWindow(QMainWindow):
         self._last_toast_at = time.monotonic()
         self._start_toast_sound()
 
-    def _start_toast_sound(self) -> None:
-        """Odtwarza dźwięk przez czas odpowiadający wyświetlaniu alarmu.
+    def _refresh_sound_lists(self) -> None:
+        """Odświeża listy dostępnych dźwięków we wszystkich kanałach."""
+        available = list_available_sounds()
+
+        for combo in self.cb_sounds.values():
+            current = combo.currentData()
+            combo.blockSignals(True)
+            combo.clear()
+            for path in available:
+                combo.addItem(path.stem, path.name)
+            if current:
+                index = combo.findData(current)
+                if index >= 0:
+                    combo.setCurrentIndex(index)
+            combo.blockSignals(False)
+
+    def _selected_sound_path(self, key: str = "event") -> Optional[Path]:
+        """Zwraca plik dźwiękowy wybrany dla danego rodzaju alarmu."""
+        combo = self.cb_sounds.get(key)
+        name = combo.currentData() if combo is not None else None
+        if not name:
+            return ensure_default_sound()
+        path = SOUNDS_DIR / name
+        return path if path.exists() else ensure_default_sound()
+
+    def _on_volume_changed(self, value: int) -> None:
+        self.lbl_volume.setText(f"{value}%")
+        self._sound.set_volume(value / 100)
+
+    def _on_add_sound(self, key: str) -> None:
+        path_str, _ = QFileDialog.getOpenFileName(
+            self, "Wybierz plik dźwiękowy", "", "Pliki WAV (*.wav)"
+        )
+        if not path_str:
+            return
+
+        imported = import_sound(Path(path_str))
+        if imported is None:
+            QMessageBox.warning(
+                self,
+                "Nie udało się dodać pliku",
+                "Plik nie został skopiowany. Upewnij się, że to poprawny plik .wav.",
+            )
+            return
+
+        self._refresh_sound_lists()
+        # Nowy plik ustawiamy tylko w kanale, z którego go dodano - pozostałe
+        # zachowują swój dotychczasowy wybór.
+        combo = self.cb_sounds.get(key)
+        if combo is not None:
+            index = combo.findData(imported.name)
+            if index >= 0:
+                combo.setCurrentIndex(index)
+        self.log(f"Dodano dźwięk: {imported.name}")
+
+    def _on_test_sound(self, playing: bool, key: str) -> None:
+        button = self.btn_test_sounds.get(key)
+
+        if playing:
+            # Odsłuch w jednym kanale przerywa odsłuch w innym - inaczej dwa
+            # dźwięki nakładałyby się na siebie.
+            for other_key, other_button in self.btn_test_sounds.items():
+                if other_key != key and other_button.isChecked():
+                    other_button.setChecked(False)
+
+            self._sound.play(self._selected_sound_path(key))
+            if button is not None:
+                button.setText("Zatrzymaj")
+        else:
+            self._sound.stop()
+            if button is not None:
+                button.setText("Odtwórz")
+
+    def _sound_enabled_for(self, key: str) -> bool:
+        checkbox = self.chk_sounds.get(key)
+        return checkbox is not None and checkbox.isChecked()
+
+    def _start_alarm_sound(self, key: str = "event") -> None:
+        """Odtwarza dźwięk przypisany do danego rodzaju alarmu, jeśli włączony."""
+        if self._sound_enabled_for(key):
+            self._sound.play(self._selected_sound_path(key))
+
+    def _start_toast_sound(self, key: str = "event") -> None:
+        """Odtwarza dźwięk w trybie powiadomień, z własnym licznikiem czasu.
 
         Powiadomienie systemowe chowa się samo, w czasie kontrolowanym przez
         Windows, dlatego dźwięk zatrzymujemy własnym licznikiem - zachowując
         ten sam rytm co w trybie pełnoekranowym.
         """
-        if not self.chk_sound.isChecked():
+        if not self._sound_enabled_for(key):
             return
-        self._sound.play(self._selected_sound_path())
+        self._sound.play(self._selected_sound_path(key))
         self._toast_sound_timer.start(self.sb_display.value() * 1000)
 
     def _on_toast_acknowledged(self, client: str, incident_id: str) -> None:
@@ -813,6 +1027,7 @@ class MainWindow(QMainWindow):
         if self._toast_mode():
             shown = sum(1 for label in labels if self._toasts.show_unavailable(label))
             if shown:
+                self._start_toast_sound("unavailable")
                 return
             # Powiadomienia zawiodły - pokazujemy alarm pełnoekranowy.
 
@@ -820,6 +1035,7 @@ class MainWindow(QMainWindow):
         self._overlay.show_alarm(
             entries, self._settings.alarm_display_sec, unavailable=True
         )
+        self._start_alarm_sound("unavailable")
 
     def _on_connection_lost(self, labels: list) -> None:
         """Alarm o zerwanym połączeniu - jednorazowy, bez dźwięku.
@@ -835,6 +1051,7 @@ class MainWindow(QMainWindow):
                 1 for label in labels if self._toasts.show_connection_error(label)
             )
             if shown:
+                self._start_toast_sound("connection")
                 return
             # Powiadomienia zawiodły - pokazujemy alarm pełnoekranowy.
 
@@ -842,6 +1059,7 @@ class MainWindow(QMainWindow):
         self._overlay.show_alarm(
             entries, self._settings.alarm_display_sec, connection_error=True
         )
+        self._start_alarm_sound("connection")
 
     def _on_clients_returned(self, labels: list) -> None:
         """Powrót środowiska - tylko wpis w logu, bez alarmu."""
@@ -894,6 +1112,7 @@ class MainWindow(QMainWindow):
     # --- Prezentacja stanu -------------------------------------------------
 
     def _refresh_table(self, statuses: list[ClientStatus]) -> None:
+        self._last_statuses = list(statuses)
         self.table.setRowCount(len(statuses))
 
         available = 0
@@ -921,18 +1140,18 @@ class MainWindow(QMainWindow):
             ]
 
             if not status.is_available:
-                color = _COLOR_ERROR
+                color = QColor(self._palette.row_error)
             elif status.connection_lost:
-                color = _COLOR_CONNECTION
+                color = QColor(self._palette.row_connection)
             elif status.active_events:
-                color = _COLOR_ALERT
+                color = QColor(self._palette.row_alert)
             else:
-                color = _COLOR_OK
+                color = QColor(self._palette.row_ok)
 
             for col, value in enumerate(values):
                 item = QTableWidgetItem(value)
                 item.setBackground(color)
-                item.setForeground(_COLOR_TEXT)
+                item.setForeground(QColor(self._palette.row_text))
                 if col in (1, 2, 3, 4):
                     item.setTextAlignment(Qt.AlignCenter)
                 self.table.setItem(row, col, item)
