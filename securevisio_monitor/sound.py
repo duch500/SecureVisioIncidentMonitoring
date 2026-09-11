@@ -142,6 +142,7 @@ class AlarmSound:
         self._backend = "none"
         self._current_path: Optional[Path] = None
         self._volume = 0.8
+        self._status_connected = False
         self._init_backend()
 
     @staticmethod
@@ -207,7 +208,16 @@ class AlarmSound:
             self._effect.setVolume(self._volume)
 
     def play(self, path: Optional[Path]) -> None:
-        """Rozpoczyna odtwarzanie w pętli."""
+        """Rozpoczyna odtwarzanie w pętli.
+
+        Przy pierwszym użyciu nowego pliku QSoundEffect ładuje go
+        asynchronicznie - setSource() zwraca sterowanie natychmiast, a samo
+        dekodowanie dźwięku dzieje się w tle. Wywołanie play() zanim status
+        osiągnie Ready kończy się ciszą, bez żadnego wyjątku - to właśnie ten
+        przypadek odpowiadał za zgłoszenia "dźwięk raz jest, raz go nie ma"
+        przy przełączaniu na własne pliki (domyślny dźwięk zdążył się
+        załadować przy starcie programu, zanim doszło do pierwszego alarmu).
+        """
         if not self.is_available or path is None:
             return
 
@@ -217,13 +227,7 @@ class AlarmSound:
 
         try:
             if self._backend == "qt":
-                from PySide6.QtCore import QUrl
-
-                if self._current_path != path:
-                    self._effect.setSource(QUrl.fromLocalFile(str(path.resolve())))
-                    self._current_path = path
-                self._effect.setVolume(self._volume)
-                self._effect.play()
+                self._play_qt(path)
             else:
                 import winsound
 
@@ -234,6 +238,65 @@ class AlarmSound:
         except Exception as exc:  # noqa: BLE001
             # Brak dźwięku nie może przeszkodzić w wyświetleniu alarmu.
             logger.warning("Nie udało się odtworzyć dźwięku alarmu: %s", exc)
+
+    def _play_qt(self, path: Path) -> None:
+        from PySide6.QtCore import QUrl
+        from PySide6.QtMultimedia import QSoundEffect
+
+        self._effect.setVolume(self._volume)
+
+        if self._current_path == path:
+            # Ten sam plik co poprzednio - QSoundEffect miał już czas go
+            # załadować przy wcześniejszym użyciu, można odtwarzać od razu.
+            self._start_when_ready()
+            return
+
+        self._current_path = path
+        self._disconnect_status_signal()
+        self._effect.setSource(QUrl.fromLocalFile(str(path.resolve())))
+
+        status = self._effect.status()
+        if status == QSoundEffect.Ready:
+            self._effect.play()
+            return
+
+        if status == QSoundEffect.Error:
+            logger.warning("QSoundEffect zgłosił błąd wczytywania pliku: %s", path)
+            return
+
+        # Wciąż ładowanie (Loading) - odtwarzamy dopiero, gdy status się
+        # zmieni, zamiast wywoływać play() na pliku, który jeszcze nie jest
+        # gotowy (co kończy się ciszą, bez żadnego wyjątku).
+        self._effect.statusChanged.connect(self._on_status_changed)
+        self._status_connected = True
+        logger.debug("Dźwięk %s wciąż się ładuje - odtworzenie po gotowości.", path)
+
+    def _disconnect_status_signal(self) -> None:
+        """Rozłącza nasłuch statusChanged, jeśli aktualnie podłączony.
+
+        Flaga zamiast łapania wyjątku z disconnect(): część wersji PySide
+        przy rozłączaniu niepodłączonego sygnału zgłasza ostrzeżenie przez
+        moduł warnings zamiast rzucić wyjątek, więc try/except go nie łapie.
+        """
+        if self._status_connected:
+            self._effect.statusChanged.disconnect(self._on_status_changed)
+            self._status_connected = False
+
+    def _on_status_changed(self) -> None:
+        from PySide6.QtMultimedia import QSoundEffect
+
+        status = self._effect.status()
+        if status == QSoundEffect.Ready:
+            self._start_when_ready()
+        elif status == QSoundEffect.Error:
+            self._disconnect_status_signal()
+            logger.warning(
+                "QSoundEffect zgłosił błąd wczytywania pliku: %s", self._current_path
+            )
+
+    def _start_when_ready(self) -> None:
+        self._disconnect_status_signal()
+        self._effect.play()
 
     def stop(self) -> None:
         """Zatrzymuje odtwarzanie."""

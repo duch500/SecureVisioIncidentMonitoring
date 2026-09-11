@@ -15,11 +15,18 @@
     "Connection error"
   ],
   "alarm_mode": "fullscreen",
+  "theme": "light",
   "color_event": "#B40000",
   "color_unavailable": "#BE5F00",
   "color_connection": "#5F2D8C",
+  "license_accepted": true,
+  "license_accepted_version": "1.3",
   "sound_enabled": false,
   "sound_file": "alarm_domyslny.wav",
+  "sound_enabled_unavailable": false,
+  "sound_file_unavailable": "alarm_domyslny.wav",
+  "sound_enabled_connection": false,
+  "sound_file_connection": "alarm_domyslny.wav",
   "sound_volume": 80,
   "clients": []
 }

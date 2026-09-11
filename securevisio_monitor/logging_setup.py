@@ -22,7 +22,10 @@ MAX_BYTES = 256 * 1024
 BACKUP_COUNT = 1
 
 _FORMAT = "%(asctime)s [%(levelname)s] %(message)s"
-_DATE_FORMAT = "%H:%M:%S"
+# Data + czas w logu pliku - sama godzina nie wystarcza, gdy rotacja pliku
+# obejmuje wpisy sprzed kilku dni, albo gdy log jest analizowany po fakcie
+# przez kogoś, kto nie wie, którego dnia dotyczy.
+_DATE_FORMAT = "%d.%m.%Y %H:%M:%S"
 
 
 def setup_logging(

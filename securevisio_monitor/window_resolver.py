@@ -293,6 +293,40 @@ def maximize_and_focus(hwnd: int) -> bool:
     return True
 
 
+def minimize_window(hwnd: int) -> bool:
+    """Minimalizuje okno.
+
+    W odróżnieniu od maximize_and_focus nie wymaga przejęcia pierwszego
+    planu - zwinięcie okna nie podlega tym samym ograniczeniom Windows co
+    wysunięcie go na wierzch.
+
+    Returns:
+        True, jeśli operacja się powiodła.
+    """
+    try:
+        win32gui.ShowWindow(hwnd, win32con.SW_MINIMIZE)
+        return True
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Nie udało się zminimalizować okna %d: %s", hwnd, exc)
+        return False
+
+
+def toggle_window_state(hwnd: int) -> bool:
+    """Przełącza okno między zminimalizowanym a zmaksymalizowanym stanem.
+
+    Zminimalizowane okno zostaje przywrócone i wysunięte na wierzch;
+    widoczne (niezależnie czy zmaksymalizowane, czy w zwykłym rozmiarze)
+    zostaje zminimalizowane. Wywoływane wyłącznie w bezpośredniej reakcji
+    na dwuklik użytkownika w tabeli środowisk.
+
+    Returns:
+        True, jeśli operacja się powiodła.
+    """
+    if is_window_minimized(hwnd):
+        return maximize_and_focus(hwnd)
+    return minimize_window(hwnd)
+
+
 def get_window_rect(hwnd: int) -> Optional[tuple[int, int, int, int]]:
     """Zwraca prostokąt okna (left, top, right, bottom) albo None.
 

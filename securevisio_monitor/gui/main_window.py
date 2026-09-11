@@ -80,6 +80,7 @@ from ..window_resolver import (
     find_window_for_client,
     get_window_rect,
     maximize_and_focus,
+    toggle_window_state,
 )
 from ..worker import ClientStatus, MonitorWorker
 from .overlays import AlarmOverlay
@@ -245,6 +246,8 @@ class MainWindow(QMainWindow):
         self.table.verticalHeader().setVisible(False)
         self.table.setEditTriggers(QTableWidget.NoEditTriggers)
         self.table.setSelectionBehavior(QTableWidget.SelectRows)
+        self.table.setCursor(Qt.PointingHandCursor)
+        self.table.itemDoubleClicked.connect(self._on_table_double_clicked)
 
         header = self.table.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.ResizeToContents)
@@ -257,6 +260,10 @@ class MainWindow(QMainWindow):
 
         self.lbl_summary = QLabel("Monitorowanie zatrzymane.")
         layout.addWidget(self.lbl_summary)
+
+        hint = QLabel("Wskazówka: dwuklik na wierszu pokazuje albo ukrywa okno środowiska.")
+        hint.setStyleSheet("color: #777777; font-size: 11px;")
+        layout.addWidget(hint)
 
         return group
 
@@ -688,6 +695,23 @@ class MainWindow(QMainWindow):
         self._set_controls_running(True)
 
     def stop_monitoring(self) -> None:
+        """Sygnalizuje zatrzymanie monitorowania, bez blokowania interfejsu.
+
+        Celowo NIE wywołuje QThread.wait() z tego miejsca: to wywołanie
+        blokowałoby wątek GUI na czas oczekiwania, co Windows pokazuje jako
+        "Nie odpowiada" - dokładnie ten objaw, który zgłaszali użytkownicy.
+        Pojedynczy odczyt UI Automation nie jest przerywalny w trakcie
+        trwania, więc zatrzymanie może chwilę potrwać - interfejs ma
+        pozostać responsywny przez ten czas, nie zamrożony.
+
+        Sprzątanie (zwolnienie self._worker, przywrócenie przycisków)
+        następuje w _on_worker_finished, wywoływanym przez sygnał
+        QThread.finished dopiero, gdy wątek faktycznie się zakończy - nigdy
+        wcześniej. Dzięki temu wątek nigdy nie zostaje osierocony: poprzednia
+        wersja zwalniała referencję do workera także wtedy, gdy limit czasu
+        minął, co pozwalało uruchomić drugi, równoległy wątek obok wciąż
+        żyjącego pierwszego.
+        """
         self._reminder_timer.stop()
         self._sound.stop()
         self._toast_sound_timer.stop()
@@ -695,17 +719,35 @@ class MainWindow(QMainWindow):
         self._last_toast_at = None
         self._alerts.force_hide()
 
-        if self._worker is not None:
-            self._worker.stop()
-            # Czekamy z limitem - gdyby odczyt UIA się zawiesił, GUI nie
-            # może zawisnąć razem z nim.
-            if not self._worker.wait(5000):
-                logger.warning("Worker nie zatrzymał się w wyznaczonym czasie.")
-                self.log("Uwaga: wątek monitorujący nie odpowiada.")
-            self._worker = None
+        if self._worker is None:
+            self._set_controls_running(False)
+            self.lbl_summary.setText("Monitorowanie zatrzymane.")
+            return
 
-        self._set_controls_running(False)
-        self.lbl_summary.setText("Monitorowanie zatrzymane.")
+        self._worker.stop()
+        self.btn_stop.setEnabled(False)
+        self.btn_check.setEnabled(False)
+        self.lbl_summary.setText("Zatrzymywanie monitorowania...")
+
+        # Log ostrzegawczy, jeśli zatrzymanie trwa nietypowo długo - czysto
+        # informacyjny, nie blokuje niczego. Token chroni przed sytuacją,
+        # w której ten worker już dawno się zatrzymał i zdążył powstać nowy,
+        # a spóźniony callback omyłkowo odnosiłby się do niego.
+        pending_worker = self._worker
+        QTimer.singleShot(
+            8000, lambda: self._warn_if_still_stopping(pending_worker)
+        )
+
+    def _warn_if_still_stopping(self, worker) -> None:
+        if self._worker is worker:
+            logger.warning(
+                "Wątek monitorujący nie zatrzymał się w ciągu 8 s - "
+                "prawdopodobnie utknął w trakcie odczytu UI Automation."
+            )
+            self.log(
+                "Zatrzymywanie trwa dłużej niż zwykle - program pozostaje "
+                "aktywny, proszę czekać."
+            )
 
     def _set_controls_running(self, running: bool) -> None:
         self.btn_start.setEnabled(not running)
@@ -720,7 +762,16 @@ class MainWindow(QMainWindow):
             widget.setEnabled(not running)
 
     def _on_worker_finished(self) -> None:
+        """Wywoływane przez QThread.finished - wątek naprawdę się zakończył.
+
+        Jedyne miejsce, w którym self._worker jest zwalniane. W odróżnieniu
+        od poprzedniej wersji nie dzieje się to "na wszelki wypadek" po
+        upływie limitu czasu, tylko dopiero gdy run() faktycznie zwróci -
+        co eliminuje ryzyko osierocenia wciąż działającego wątku.
+        """
+        self._worker = None
         self._set_controls_running(False)
+        self.lbl_summary.setText("Monitorowanie zatrzymane.")
 
     def _on_check_now(self) -> None:
         if self._worker is not None:
@@ -791,6 +842,34 @@ class MainWindow(QMainWindow):
             self.lbl_colors_note.setText("")
 
     # --- Przywracanie okna z poziomu alarmu -------------------------------
+
+    def _on_table_double_clicked(self, item) -> None:
+        """Przełącza stan okna środowiska klikniętego wiersza.
+
+        Zminimalizowane okno zostaje pokazane, widoczne - schowane. Działa
+        niezależnie od tego, czy monitorowanie jest aktualnie uruchomione,
+        bo samo wyszukanie okna nie wymaga działającego workera.
+        """
+        row = item.row()
+        label_item = self.table.item(row, 0)
+        if label_item is None:
+            return
+        client = label_item.text()
+
+        resolver = ClientResolver(
+            base_dir=self._settings.base_dir or None,
+            manual_map=self._settings.manual_map(),
+        )
+        hwnd = find_window_for_client(client, resolver)
+
+        if hwnd is None:
+            self.log(f"Nie znaleziono okna dla {client} - mogło zostać zamknięte.")
+            return
+
+        if toggle_window_state(hwnd):
+            self.log(f"Przełączono widoczność okna: {client}.")
+        else:
+            self.log(f"Nie udało się przełączyć okna {client}.")
 
     def _on_show_requested(self, client: str) -> None:
         """Maksymalizuje okno wskazanego klienta i ustępuje mu miejsca."""
@@ -1188,11 +1267,30 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event) -> None:  # noqa: N802 - API Qt
         self._apply_ui_to_settings()
-        self.stop_monitoring()
+
+        # Zamknięcie programu, w odróżnieniu od zwykłego "Stop", może sobie
+        # pozwolić na krótkie, ograniczone oczekiwanie w tym miejscu - program
+        # i tak kończy działanie, więc chwilowa blokada GUI nie ma znaczenia.
+        # Celem jest dopilnowanie, żeby wątek monitorujący faktycznie się
+        # zatrzymał, zanim proces zniknie - inaczej Qt zgłasza zniszczenie
+        # wciąż działającego QThread.
+        worker = self._worker
+        if worker is not None:
+            worker.stop()
+
+        self._reminder_timer.stop()
         self._sound.stop()
         self._toast_sound_timer.stop()
         self._toasts.clear_all()
+        self._last_toast_at = None
+        self._alerts.force_hide()
         self._overlay.hide_alarm(emit_signal=False)
+
+        if worker is not None and not worker.wait(3000):
+            logger.warning(
+                "Wątek monitorujący nie zatrzymał się przed zamknięciem "
+                "programu w ciągu 3 s - proces zostanie zakończony mimo to."
+            )
 
         event.accept()
 
