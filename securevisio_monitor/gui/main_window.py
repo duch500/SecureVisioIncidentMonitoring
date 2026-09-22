@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import logging
 import time
+import webbrowser
 from datetime import datetime
 from typing import Optional
 
@@ -55,6 +56,7 @@ from ..alert_manager import AlertManager
 from ..config import (
     ALARM_MODE_FULLSCREEN,
     ALARM_MODE_TOAST,
+    MIN_SPLUNK_POLL_INTERVAL_SEC,
     THEME_DARK,
     THEME_LIGHT,
     DEFAULT_COLOR_CONNECTION,
@@ -82,7 +84,7 @@ from ..window_resolver import (
     maximize_and_focus,
     toggle_window_state,
 )
-from ..worker import ClientStatus, MonitorWorker
+from ..worker import ClientStatus, MonitorWorker, SplunkWorker
 from .overlays import AlarmOverlay
 from .themes import build_stylesheet, get_palette
 
@@ -105,6 +107,10 @@ class MainWindow(QMainWindow):
         super().__init__()
         self._settings = settings
         self._worker: Optional[MonitorWorker] = None
+        # Osobny, drugi wątek - inny interwał (minimum 120s) i inny mechanizm
+        # odczytu (REST, nie UI Automation) niż SecureVisio, dlatego osobna
+        # klasa, ale wspólna tabela i wspólny mechanizm alarmu (ustalone wprost).
+        self._splunk_worker: Optional[SplunkWorker] = None
 
         # Kolory alarmów z konfiguracji - trzymane osobno, żeby wybór w oknie
         # dialogowym działał od razu, jeszcze przed zapisaniem ustawień.
@@ -156,6 +162,11 @@ class MainWindow(QMainWindow):
         # Ostatnio wyświetlone statusy - potrzebne, żeby przemalować tabelę
         # po zmianie motywu bez czekania na kolejny cykl monitorowania.
         self._last_statuses: list[ClientStatus] = []
+        # Status_updated przychodzi osobno z każdego workera - trzymamy je
+        # osobno i łączymy w jedną listę przy każdym odświeżeniu tabeli,
+        # zamiast nadpisywać nawzajem swoje wiersze.
+        self._securevisio_statuses: list[ClientStatus] = []
+        self._splunk_statuses: list[ClientStatus] = []
 
         # Ustawienie ikony bezpośrednio na oknie, niezależnie od
         # QApplication.setWindowIcon() wywoływanego w app.py. Zabezpieczenie
@@ -261,7 +272,10 @@ class MainWindow(QMainWindow):
         self.lbl_summary = QLabel("Monitorowanie zatrzymane.")
         layout.addWidget(self.lbl_summary)
 
-        hint = QLabel("Wskazówka: dwuklik na wierszu pokazuje albo ukrywa okno środowiska.")
+        hint = QLabel(
+            "Wskazówka: dwuklik pokazuje/ukrywa okno (SecureVisio) albo "
+            "otwiera środowisko w przeglądarce (Splunk)."
+        )
         hint.setStyleSheet("color: #777777; font-size: 11px;")
         layout.addWidget(hint)
 
@@ -311,6 +325,24 @@ class MainWindow(QMainWindow):
 
         numbers_row.addStretch()
         layout.addLayout(numbers_row)
+
+        splunk_row = QHBoxLayout()
+        splunk_row.addWidget(QLabel("Odpytywanie Splunk (s):"))
+        self.sb_splunk_interval = QSpinBox()
+        # Minimum twarde, nie tylko sugerowane - lookup es_notable_events
+        # odświeża się po stronie Splunka co ok. 5 minut, a częstsze
+        # odpytywanie z wielu stanowisk jednocześnie obciąża Search Head
+        # bez żadnej korzyści (ustalone wprost z administratorem Splunka).
+        self.sb_splunk_interval.setRange(MIN_SPLUNK_POLL_INTERVAL_SEC, 3600)
+        splunk_row.addWidget(self.sb_splunk_interval)
+        splunk_note = QLabel(
+            f"(minimum {MIN_SPLUNK_POLL_INTERVAL_SEC}s - środowiska "
+            "Splunk konfiguruje się na razie w settings.json)"
+        )
+        splunk_note.setStyleSheet("color: #777777;")
+        splunk_row.addWidget(splunk_note)
+        splunk_row.addStretch()
+        layout.addLayout(splunk_row)
 
         flags_row = QHBoxLayout()
         self.chk_first_scan = QCheckBox("Alarmuj o zdarzeniach zastanych przy starcie")
@@ -508,6 +540,9 @@ class MainWindow(QMainWindow):
         self.txt_base_dir.setText(s.base_dir)
         self.txt_phrases.setText("; ".join(s.default_phrases))
         self.sb_interval.setValue(s.interval_sec)
+        self.sb_splunk_interval.setValue(
+            max(s.splunk_poll_interval_sec, MIN_SPLUNK_POLL_INTERVAL_SEC)
+        )
         self.sb_display.setValue(s.alarm_display_sec)
         self.sb_repeat.setValue(s.alarm_repeat_sec)
         self.chk_first_scan.setChecked(s.alert_on_first_scan)
@@ -559,6 +594,7 @@ class MainWindow(QMainWindow):
             self._settings.base_dir = self.txt_base_dir.text().strip()
             self._settings.default_phrases = phrases
             self._settings.interval_sec = self.sb_interval.value()
+            self._settings.splunk_poll_interval_sec = self.sb_splunk_interval.value()
             self._settings.alarm_display_sec = self.sb_display.value()
             self._settings.alarm_repeat_sec = self.sb_repeat.value()
             self._settings.alert_on_first_scan = self.chk_first_scan.isChecked()
@@ -665,12 +701,17 @@ class MainWindow(QMainWindow):
         if not self._apply_ui_to_settings():
             return
 
-        if not self._settings.base_dir and not self._settings.manual_map():
+        has_securevisio_config = bool(
+            self._settings.base_dir or self._settings.manual_map()
+        )
+        has_splunk_config = bool(self._settings.enabled_splunk_environments())
+
+        if not has_securevisio_config and not has_splunk_config:
             QMessageBox.warning(
                 self,
                 "Brak konfiguracji",
-                "Podaj katalog środowisk, żeby aplikacja mogła rozpoznać klientów "
-                "po nazwie podkatalogu.",
+                "Podaj katalog środowisk SecureVisio albo skonfiguruj co "
+                "najmniej jedno środowisko Splunk w pliku settings.json.",
             )
             return
 
@@ -681,15 +722,26 @@ class MainWindow(QMainWindow):
         )
         self._overlay._display_seconds = self._settings.alarm_display_sec
 
-        self._worker = MonitorWorker(self._settings)
-        self._worker.new_alerts.connect(self._on_new_alerts)
-        self._worker.clients_lost.connect(self._on_clients_lost)
-        self._worker.clients_returned.connect(self._on_clients_returned)
-        self._worker.connection_lost.connect(self._on_connection_lost)
-        self._worker.status_updated.connect(self._on_status_updated)
-        self._worker.log_message.connect(self.log)
-        self._worker.finished.connect(self._on_worker_finished)
-        self._worker.start()
+        # SecureVisio i Splunk startują niezależnie - użytkownik może mieć
+        # skonfigurowane tylko jedno z nich (np. sam Splunk, bez SecureVisio).
+        if has_securevisio_config:
+            self._worker = MonitorWorker(self._settings)
+            self._worker.new_alerts.connect(self._on_new_alerts)
+            self._worker.clients_lost.connect(self._on_clients_lost)
+            self._worker.clients_returned.connect(self._on_clients_returned)
+            self._worker.connection_lost.connect(self._on_connection_lost)
+            self._worker.status_updated.connect(self._on_status_updated)
+            self._worker.log_message.connect(self.log)
+            self._worker.finished.connect(self._on_worker_finished)
+            self._worker.start()
+
+        if has_splunk_config:
+            self._splunk_worker = SplunkWorker(self._settings)
+            self._splunk_worker.new_alerts.connect(self._on_new_alerts)
+            self._splunk_worker.status_updated.connect(self._on_splunk_status_updated)
+            self._splunk_worker.log_message.connect(self.log)
+            self._splunk_worker.finished.connect(self._on_splunk_worker_finished)
+            self._splunk_worker.start()
 
         self._reminder_timer.start()
         self._set_controls_running(True)
@@ -719,34 +771,53 @@ class MainWindow(QMainWindow):
         self._last_toast_at = None
         self._alerts.force_hide()
 
-        if self._worker is None:
+        if self._worker is None and self._splunk_worker is None:
             self._set_controls_running(False)
             self.lbl_summary.setText("Monitorowanie zatrzymane.")
             return
 
-        self._worker.stop()
         self.btn_stop.setEnabled(False)
         self.btn_check.setEnabled(False)
         self.lbl_summary.setText("Zatrzymywanie monitorowania...")
 
-        # Log ostrzegawczy, jeśli zatrzymanie trwa nietypowo długo - czysto
-        # informacyjny, nie blokuje niczego. Token chroni przed sytuacją,
-        # w której ten worker już dawno się zatrzymał i zdążył powstać nowy,
-        # a spóźniony callback omyłkowo odnosiłby się do niego.
-        pending_worker = self._worker
-        QTimer.singleShot(
-            8000, lambda: self._warn_if_still_stopping(pending_worker)
-        )
+        if self._worker is not None:
+            self._worker.stop()
+            pending = self._worker
+            QTimer.singleShot(
+                8000,
+                lambda: self._warn_if_still_stopping(pending, "_worker", "SecureVisio"),
+            )
 
-    def _warn_if_still_stopping(self, worker) -> None:
-        if self._worker is worker:
+        if self._splunk_worker is not None:
+            self._splunk_worker.stop()
+            pending_splunk = self._splunk_worker
+            QTimer.singleShot(
+                8000,
+                lambda: self._warn_if_still_stopping(
+                    pending_splunk, "_splunk_worker", "Splunk"
+                ),
+            )
+
+    def _all_workers_stopped(self) -> bool:
+        return self._worker is None and self._splunk_worker is None
+
+    def _warn_if_still_stopping(self, worker, attr_name: str, label: str) -> None:
+        """Log ostrzegawczy, jeśli zatrzymanie danego workera trwa nietypowo długo.
+
+        Czysto informacyjny, nie blokuje niczego. attr_name pozwala sprawdzić,
+        czy TEN KONKRETNY worker nadal jest aktualny (nie zdążył się zmienić
+        na nowy między wywołaniem stop() a upływem 8s) - jedna, generyczna
+        metoda obsługuje oba workery zamiast dwóch niemal identycznych kopii.
+        """
+        if getattr(self, attr_name) is worker:
             logger.warning(
-                "Wątek monitorujący nie zatrzymał się w ciągu 8 s - "
-                "prawdopodobnie utknął w trakcie odczytu UI Automation."
+                "%s: wątek monitorujący nie zatrzymał się w ciągu 8 s - "
+                "prawdopodobnie utknął w trakcie odczytu.",
+                label,
             )
             self.log(
-                "Zatrzymywanie trwa dłużej niż zwykle - program pozostaje "
-                "aktywny, proszę czekać."
+                f"{label}: zatrzymywanie trwa dłużej niż zwykle - program "
+                "pozostaje aktywny, proszę czekać."
             )
 
     def _set_controls_running(self, running: bool) -> None:
@@ -758,7 +829,7 @@ class MainWindow(QMainWindow):
         # wyszarza tekst tak, że w trybie ciemnym staje się nieczytelny.
         for field in (self.txt_base_dir, self.txt_phrases):
             field.setReadOnly(running)
-        for widget in (self.sb_interval, self.chk_first_scan, self.cb_alarm_mode):
+        for widget in (self.sb_interval, self.sb_splunk_interval, self.chk_first_scan, self.cb_alarm_mode):
             widget.setEnabled(not running)
 
     def _on_worker_finished(self) -> None:
@@ -768,12 +839,28 @@ class MainWindow(QMainWindow):
         od poprzedniej wersji nie dzieje się to "na wszelki wypadek" po
         upływie limitu czasu, tylko dopiero gdy run() faktycznie zwróci -
         co eliminuje ryzyko osierocenia wciąż działającego wątku.
+
+        Kontrolki wracają do stanu "zatrzymane" dopiero, gdy WSZYSTKIE
+        aktywne workery się zakończą - jeśli działa też SplunkWorker, jego
+        własny handler (_on_splunk_worker_finished) sprawdza to samo.
         """
         self._worker = None
-        self._set_controls_running(False)
-        self.lbl_summary.setText("Monitorowanie zatrzymane.")
+        if self._all_workers_stopped():
+            self._set_controls_running(False)
+            self.lbl_summary.setText("Monitorowanie zatrzymane.")
+
+    def _on_splunk_worker_finished(self) -> None:
+        """Odpowiednik _on_worker_finished dla SplunkWorker."""
+        self._splunk_worker = None
+        if self._all_workers_stopped():
+            self._set_controls_running(False)
+            self.lbl_summary.setText("Monitorowanie zatrzymane.")
 
     def _on_check_now(self) -> None:
+        # Celowo dotyczy wyłącznie SecureVisio. Splunk nie dostaje "wymuszonego
+        # sprawdzenia" - minimalny interwał 120s jest twardym ograniczeniem
+        # wynikającym z obciążenia Search Heada (ustalone z adminem), a dowolny
+        # przycisk pozwalający je obejść podważałby ten limit.
         if self._worker is not None:
             self._worker.check_now()
             self.log("Wymuszono sprawdzenie.")
@@ -856,6 +943,12 @@ class MainWindow(QMainWindow):
             return
         client = label_item.text()
 
+        splunk_env = self._settings.find_splunk_environment(client)
+        if splunk_env is not None:
+            webbrowser.open(splunk_env.web_url)
+            self.log(f"Otworzono {splunk_env.web_url} dla {client}.")
+            return
+
         resolver = ClientResolver(
             base_dir=self._settings.base_dir or None,
             manual_map=self._settings.manual_map(),
@@ -872,7 +965,31 @@ class MainWindow(QMainWindow):
             self.log(f"Nie udało się przełączyć okna {client}.")
 
     def _on_show_requested(self, client: str) -> None:
-        """Maksymalizuje okno wskazanego klienta i ustępuje mu miejsca."""
+        """Reaguje na kliknięcie "Pokaż" - otwiera okno albo przeglądarkę.
+
+        Środowiska Splunk nie mają lokalnego okna do przywrócenia - "Pokaż"
+        otwiera zamiast tego stronę główną tego środowiska w domyślnej
+        przeglądarce (ustalone wprost: sam adres, bez próby wskazania
+        konkretnego incydentu, bo format takiego linku nie jest znany).
+        """
+        splunk_env = self._settings.find_splunk_environment(client)
+        if splunk_env is not None:
+            webbrowser.open(splunk_env.web_url)
+            self.log(f"Otworzono {splunk_env.web_url} dla {client}.")
+
+            if self._toast_mode():
+                return
+
+            if self._overlay.entry_count <= 1:
+                self._sound.stop()
+                self._overlay.hide_alarm(emit_signal=False)
+                self._on_alarm_acknowledged()
+            # Przy wielu jednoczesnych wpisach nie da się zamknąć wyłącznie
+            # ekranu dotyczącego tego środowiska (brak okna/pozycji na
+            # ekranie do wskazania, w odróżnieniu od SecureVisio) - reszta
+            # alarmu zostaje widoczna, operator zamyka ją tak jak zwykle.
+            return
+
         resolver = ClientResolver(
             base_dir=self._settings.base_dir or None,
             manual_map=self._settings.manual_map(),
@@ -939,9 +1056,12 @@ class MainWindow(QMainWindow):
         """Wyświetla osobne powiadomienie dla każdego zdarzenia."""
         shown = 0
         for alert in alerts:
-            if self._toasts.show_event(
-                alert.client, alert.location_label, alert.incident_id
-            ):
+            location = (
+                f"[Splunk] {alert.location_label}"
+                if alert.source == "Splunk"
+                else alert.location_label
+            )
+            if self._toasts.show_event(alert.client, location, alert.incident_id):
                 shown += 1
 
         if shown == 0 and alerts:
@@ -1054,7 +1174,10 @@ class MainWindow(QMainWindow):
         self._sound.stop()
         self._toast_sound_timer.stop()
 
-        if self._worker is not None and client:
+        if client and self._settings.find_splunk_environment(client) is not None:
+            if self._splunk_worker is not None:
+                self._splunk_worker.acknowledge_ids(client, [incident_id] if incident_id else None)
+        elif self._worker is not None and client:
             self._worker.acknowledge_ids(client, [incident_id] if incident_id else None)
 
         self.log(f"Potwierdzono zdarzenie — {client}"
@@ -1146,16 +1269,35 @@ class MainWindow(QMainWindow):
             self.log(f"Środowisko {label} wróciło - monitorowanie wznowione.")
 
     def _on_status_updated(self, statuses: list) -> None:
-        self._refresh_table(statuses)
+        self._securevisio_statuses = list(statuses)
+        self._refresh_table(self._securevisio_statuses + self._splunk_statuses)
+
+    def _on_splunk_status_updated(self, statuses: list) -> None:
+        self._splunk_statuses = list(statuses)
+        self._refresh_table(self._securevisio_statuses + self._splunk_statuses)
+
+    def _active_alerts_all_sources(self) -> list:
+        """Zwraca nieobsłużone zdarzenia z obu workerów naraz.
+
+        Jedna wspólna lista zasila zarówno alarm pełnoekranowy, jak i
+        przypomnienia w trybie powiadomień - operator ma dostać jedno,
+        spójne przypomnienie o wszystkim, co czeka, niezależnie od źródła.
+        """
+        alerts = []
+        if self._worker is not None:
+            alerts.extend(self._worker.active_alerts())
+        if self._splunk_worker is not None:
+            alerts.extend(self._splunk_worker.active_alerts())
+        return alerts
 
     def _on_reminder_tick(self) -> None:
-        if self._worker is None:
+        if self._worker is None and self._splunk_worker is None:
             return
 
         if self._toast_mode():
             self._toast_reminder_tick()
         else:
-            self._alerts.on_tick(self._worker.active_alerts())
+            self._alerts.on_tick(self._active_alerts_all_sources())
 
     def _toast_reminder_tick(self) -> None:
         """Ponawia powiadomienia o nieobsłużonych zdarzeniach.
@@ -1163,7 +1305,7 @@ class MainWindow(QMainWindow):
         Windows sam decyduje, kiedy schować powiadomienie, dlatego odstęp
         przypomnień odliczamy od momentu jego wysłania.
         """
-        active = self._worker.active_alerts()
+        active = self._active_alerts_all_sources()
 
         if not active:
             self._last_toast_at = None
@@ -1184,9 +1326,21 @@ class MainWindow(QMainWindow):
     def _on_alarm_acknowledged(self) -> None:
         self._sound.stop()
         acknowledged = self._alerts.on_acknowledged()
-        if self._worker is not None and acknowledged:
-            self._worker.acknowledge(acknowledged)
-            self.log(f"Potwierdzono {len(acknowledged)} zdarzenie(a).")
+        if not acknowledged:
+            return
+
+        # Jedna partia potwierdzonych alarmów może zawierać zdarzenia z obu
+        # źródeł naraz (SecureVisio i Splunk wyświetlone na tym samym ekranie
+        # jednocześnie) - rozdzielamy po EventAlert.source do właściwego workera.
+        securevisio_alerts = [a for a in acknowledged if a.source != "Splunk"]
+        splunk_alerts = [a for a in acknowledged if a.source == "Splunk"]
+
+        if self._worker is not None and securevisio_alerts:
+            self._worker.acknowledge(securevisio_alerts)
+        if self._splunk_worker is not None and splunk_alerts:
+            self._splunk_worker.acknowledge(splunk_alerts)
+
+        self.log(f"Potwierdzono {len(acknowledged)} zdarzenie(a).")
 
     # --- Prezentacja stanu -------------------------------------------------
 
@@ -1278,6 +1432,10 @@ class MainWindow(QMainWindow):
         if worker is not None:
             worker.stop()
 
+        splunk_worker = self._splunk_worker
+        if splunk_worker is not None:
+            splunk_worker.stop()
+
         self._reminder_timer.stop()
         self._sound.stop()
         self._toast_sound_timer.stop()
@@ -1288,8 +1446,15 @@ class MainWindow(QMainWindow):
 
         if worker is not None and not worker.wait(3000):
             logger.warning(
-                "Wątek monitorujący nie zatrzymał się przed zamknięciem "
-                "programu w ciągu 3 s - proces zostanie zakończony mimo to."
+                "Wątek monitorujący SecureVisio nie zatrzymał się przed "
+                "zamknięciem programu w ciągu 3 s - proces zostanie "
+                "zakończony mimo to."
+            )
+        if splunk_worker is not None and not splunk_worker.wait(3000):
+            logger.warning(
+                "Wątek monitorujący Splunk nie zatrzymał się przed "
+                "zamknięciem programu w ciągu 3 s - proces zostanie "
+                "zakończony mimo to."
             )
 
         event.accept()

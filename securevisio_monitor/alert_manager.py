@@ -22,6 +22,20 @@ from .state_machine import EventAlert
 logger = logging.getLogger(__name__)
 
 
+def _display_location(alert: EventAlert) -> str:
+    """Dokłada widoczny znacznik źródła dla zdarzeń pochodzących ze Splunka.
+
+    Ustalone wprost: alarm ma jasno pokazywać, że dotyczy Splunka, a nie
+    SecureVisio - niezależnie od tego, jak operator nazwie samo środowisko
+    w konfiguracji. Nie modyfikujemy EventAlert.location_label (state_machine.py
+    ma zostać wolne od wiedzy o prezentacji) - znacznik dokładamy wyłącznie
+    w tej warstwie, odpowiedzialnej za to, co trafia na ekran.
+    """
+    if alert.source == "Splunk":
+        return f"[Splunk] {alert.location_label}"
+    return alert.location_label
+
+
 class AlarmDisplay(Protocol):
     """Interfejs warstwy wizualnej wymagany przez AlertManager.
 
@@ -143,7 +157,7 @@ class AlertManager:
 
     def _show(self, alerts: list[EventAlert]) -> None:
         self._displayed = list(alerts)
-        entries = [(a.location_label, a.client) for a in alerts]
+        entries = [(_display_location(a), a.client) for a in alerts]
         self._display.show_alarm(entries, self._display_seconds)
 
     @staticmethod

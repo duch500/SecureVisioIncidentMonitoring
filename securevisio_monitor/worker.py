@@ -18,7 +18,13 @@ from typing import Optional
 
 from PySide6.QtCore import QThread, Signal
 
-from .config import AppSettings
+from .config import AppSettings, SplunkEnvironment
+from .splunk_client import (
+    NEW_INCIDENT_STATUS,
+    SplunkClient,
+    SplunkQueryError,
+    fetch_with_retry,
+)
 from .state_machine import EventAlert, MonitorState
 from .uia_reader import GridReadError, read_incidents
 from .window_resolver import (
@@ -162,8 +168,21 @@ class MonitorWorker(QThread):
 
     # --- Pętla -------------------------------------------------------------
 
-    def run(self) -> None:  # noqa: D102 - API QThread
+    def start(self, *args, **kwargs) -> None:  # noqa: D102 - nadpisanie QThread.start
+        """Ustawia flagę PRZED faktycznym wystartowaniem wątku systemowego.
+
+        Bez tego istniał realny wyścig: run() na nowym wątku ustawiał
+        self._running = True jako swoją pierwszą instrukcję - jeśli stop()
+        z wątku głównego zdążył wywołać się wcześniej (np. przypadkowe
+        Start->Stop tuż po sobie), nowy wątek i tak nadpisywał to z powrotem
+        na True, cicho ignorując żądanie zatrzymania aż do końca pierwszego
+        pełnego interwału. Ustawienie flagi tutaj, zanim wątek systemowy
+        w ogóle ruszy, eliminuje ten wyścig - run() już nigdy nie pisze True.
+        """
         self._running = True
+        super().start(*args, **kwargs)
+
+    def run(self) -> None:  # noqa: D102 - API QThread
         # Nowa sesja - lista pilnowanych środowisk budowana od zera.
         self._session_clients.clear()
         self._runtimes.clear()
@@ -416,3 +435,177 @@ class MonitorWorker(QThread):
             runtime = _ClientRuntime(status=ClientStatus(label=label))
             self._runtimes[label] = runtime
         return runtime
+
+
+@dataclass
+class _SplunkRuntime:
+    """Stan śledzenia dostępności jednego środowiska Splunk między cyklami."""
+
+    status: ClientStatus
+    # Zapobiega logowaniu tego samego niepowodzenia w każdym cyklu z rzędu -
+    # log ma odnotować MOMENT utraty i przywrócenia dostępności, nie każdą
+    # kolejną, wciąż trwającą awarię.
+    was_available: bool = True
+
+
+class SplunkWorker(QThread):
+    """Cyklicznie odpytuje wszystkie skonfigurowane środowiska Splunk.
+
+    Architektonicznie równoległy do MonitorWorker, ale celowo osobny wątek:
+    interwał odpytywania Splunka (minimum 120s, ustalone wprost) jest rzędu
+    wielkości większy niż dla SecureVisio, a mechanizm odczytu (REST, nie UI
+    Automation) jest zupełnie inny. Współdzieli natomiast state_machine.py
+    bez żadnych zmian w jego logice - SplunkIncident udostępnia network_map
+    jako alias rule_name, więc mechanizm wykrywania przejść w status "nowy"
+    (tu: status="1", potwierdzone empirycznie) działa identycznie jak dla
+    SecureVisio, łącznie z zasadą "zniknięcie z wyniku nie generuje żadnego
+    alarmu" (ustalone wprost: incydent, który wypadnie z okna retencji
+    lookupa, ma nic nie wywoływać - state_machine.py już się tak zachowuje
+    natywnie, bez dodatkowego kodu).
+
+    Sygnały:
+        new_alerts: Świeżo wykryte przejścia na status nowego zdarzenia.
+        status_updated: Pełny stan wszystkich środowisk po każdym cyklu.
+        log_message: Komunikat do wyświetlenia w logu GUI.
+    """
+
+    new_alerts = Signal(list)
+    status_updated = Signal(list)
+    log_message = Signal(str)
+
+    def __init__(self, settings: AppSettings) -> None:
+        super().__init__()
+        self._settings = settings
+        self._state = MonitorState(
+            phrases=(NEW_INCIDENT_STATUS,),
+            alert_on_first_scan=settings.alert_on_first_scan,
+            source="Splunk",
+        )
+        self._runtimes: dict[str, _SplunkRuntime] = {}
+        self._running = False
+
+    def stop(self) -> None:
+        """Sygnalizuje zatrzymanie pętli. Nieblokujące - bezpieczne z GUI.
+
+        Ta sama zasada co naprawiona wcześniej w MainWindow.stop_monitoring:
+        żadne wywołanie z wątku GUI nie może czekać synchronicznie na
+        zakończenie wątku, bo to zamraża interfejs na czas oczekiwania.
+        """
+        self._running = False
+
+    def acknowledge(self, alerts: list[EventAlert]) -> None:
+        """Oznacza wskazane zdarzenia jako potwierdzone przez operatora.
+
+        Symetryczne do MonitorWorker.acknowledge - potrzebne, gdy jedna partia
+        potwierdzonych alarmów na ekranie zawiera zdarzenia z obu źródeł
+        naraz (SecureVisio i Splunk) i trzeba je rozdzielić do właściwego
+        workera po EventAlert.source.
+        """
+        by_client: dict[str, list[str]] = {}
+        for alert in alerts:
+            by_client.setdefault(alert.client, []).append(alert.incident_id)
+        for client, incident_ids in by_client.items():
+            self._state.machine_for(client).acknowledge(incident_ids)
+
+    def acknowledge_ids(self, client: str, incident_ids: Optional[list[str]] = None) -> None:
+        """Potwierdza zdarzenia jednego środowiska Splunk po identyfikatorach."""
+        self._state.machine_for(client).acknowledge(incident_ids)
+
+    def active_alerts(self) -> list[EventAlert]:
+        """Zdarzenia Splunka nadal nieobsłużone i niepotwierdzone."""
+        return self._state.active_alerts()
+
+    def start(self, *args, **kwargs) -> None:  # noqa: D102 - nadpisanie QThread.start
+        """Ustawia flagę przed startem wątku - patrz MonitorWorker.start.
+
+        Ten sam wyścig start/stop, ta sama naprawa - szczególnie istotna tu,
+        bo interwał Splunka (minimum 120s) sprawiał, że zignorowane stop()
+        potrafiłoby trzymać wątek żywy nieporównanie dłużej niż przy
+        SecureVisio (10s), zanim run() w ogóle sprawdziłby flagę ponownie.
+        """
+        self._running = True
+        super().start(*args, **kwargs)
+
+    def run(self) -> None:  # noqa: D102 - API QThread
+        self._runtimes.clear()
+        self.log_message.emit("Rozpoczęto monitorowanie Splunk.")
+        logger.debug(
+            "SplunkWorker wystartował (interwał %ds).",
+            self._settings.splunk_poll_interval_sec,
+        )
+
+        self._run_cycle()
+
+        while self._running:
+            self._sleep_interval()
+            if not self._running:
+                break
+            self._run_cycle()
+
+        self.log_message.emit("Zatrzymano monitorowanie Splunk.")
+        logger.debug("SplunkWorker zakończył pracę.")
+
+    def _sleep_interval(self) -> None:
+        deadline = time.monotonic() + self._settings.splunk_poll_interval_sec
+        while self._running and time.monotonic() < deadline:
+            time.sleep(_SLEEP_STEP_SEC)
+
+    def _run_cycle(self) -> None:
+        """Odpytuje po kolei wszystkie aktywne środowiska Splunk."""
+        environments = self._settings.enabled_splunk_environments()
+        fresh_alerts: list[EventAlert] = []
+        statuses: list[ClientStatus] = []
+
+        for env in environments:
+            runtime = self._runtimes.setdefault(
+                env.label, _SplunkRuntime(status=ClientStatus(label=env.label, method="Splunk"))
+            )
+            fresh_alerts.extend(self._poll_one(env, runtime))
+            statuses.append(runtime.status)
+
+        if fresh_alerts:
+            self.new_alerts.emit(fresh_alerts)
+        self.status_updated.emit(statuses)
+
+    def _poll_one(self, env: SplunkEnvironment, runtime: "_SplunkRuntime") -> list[EventAlert]:
+        """Odpytuje jedno środowisko, aktualizuje jego status i maszynę stanów.
+
+        Zwraca świeże alarmy z tego środowiska. Niepowodzenie (po dwóch
+        próbach - fetch_with_retry) NIE kasuje śledzonego stanu incydentów,
+        tą samą zasadą co mark_unavailable() dla SecureVisio: potraktowanie
+        przejściowej awarii sieci jako "brak zdarzeń" wywołałoby lawinę
+        fałszywych alarmów po odzyskaniu połączenia.
+        """
+        machine = self._state.machine_for(env.label)
+        status = runtime.status
+
+        try:
+            client = SplunkClient(env)
+            t0 = time.perf_counter()
+            incidents = fetch_with_retry(client, max_attempts=2)
+            elapsed = time.perf_counter() - t0
+        except SplunkQueryError as exc:
+            machine.mark_unavailable()
+            status.is_available = False
+            status.error = str(exc)
+            if runtime.was_available:
+                runtime.was_available = False
+                logger.warning("Środowisko %s: %s", env.label, exc)
+                self.log_message.emit(f"{env.label}: {exc}")
+            return []
+
+        if not runtime.was_available:
+            runtime.was_available = True
+            logger.info("Środowisko %s: połączenie przywrócone.", env.label)
+            self.log_message.emit(f"{env.label}: połączenie ze Splunkiem przywrócone.")
+
+        alerts = machine.update(incidents)
+
+        status.is_available = True
+        status.error = ""
+        status.last_read_at = datetime.now()
+        status.last_read_duration = elapsed
+        status.incident_count = len(incidents)
+        status.active_events = len(machine.active_alerts())
+
+        return alerts

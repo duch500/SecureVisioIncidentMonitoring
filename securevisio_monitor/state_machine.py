@@ -45,12 +45,17 @@ class EventAlert:
         network_map: Wartość kolumny "Mapa sieci". Pusta, gdy dane środowisko
             nie udostępnia tej kolumny.
         status: Status, który wywołał alarm.
+        source: Skąd pochodzi zdarzenie - "SecureVisio" albo "Splunk".
+            Używane przy integracji Splunka do oznaczenia alarmu, żeby
+            operator od razu widział, z jakiego systemu pochodzi (ustalone
+            wprost: "tak, ale info, że splunk").
     """
 
     client: str
     incident_id: str
     network_map: str
     status: str
+    source: str = "SecureVisio"
 
     @property
     def location_label(self) -> str:
@@ -84,10 +89,12 @@ class ClientStateMachine:
         client: str,
         phrases: Iterable[str] = DEFAULT_NEW_EVENT_PHRASES,
         alert_on_first_scan: bool = True,
+        source: str = "SecureVisio",
     ) -> None:
         self.client = client
         self._phrases = {_normalize(p) for p in phrases if p.strip()}
         self._alert_on_first_scan = alert_on_first_scan
+        self._source = source
         self._records: dict[str, _IncidentRecord] = {}
         self._first_scan_done = False
 
@@ -184,6 +191,7 @@ class ClientStateMachine:
             incident_id=incident_id,
             network_map=network_map,
             status=status,
+            source=self._source,
         )
 
     def acknowledge(self, incident_ids: Optional[Iterable[str]] = None) -> None:
@@ -245,9 +253,11 @@ class MonitorState:
         self,
         phrases: Iterable[str] = DEFAULT_NEW_EVENT_PHRASES,
         alert_on_first_scan: bool = True,
+        source: str = "SecureVisio",
     ) -> None:
         self._default_phrases = tuple(phrases)
         self._alert_on_first_scan = alert_on_first_scan
+        self._source = source
         self._machines: dict[str, ClientStateMachine] = {}
 
     def machine_for(
@@ -260,6 +270,7 @@ class MonitorState:
                 client=client,
                 phrases=phrases if phrases is not None else self._default_phrases,
                 alert_on_first_scan=self._alert_on_first_scan,
+                source=self._source,
             )
             self._machines[client] = machine
         return machine
