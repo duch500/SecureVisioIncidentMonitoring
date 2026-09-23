@@ -56,7 +56,6 @@ from ..alert_manager import AlertManager
 from ..config import (
     ALARM_MODE_FULLSCREEN,
     ALARM_MODE_TOAST,
-    MIN_SPLUNK_POLL_INTERVAL_SEC,
     THEME_DARK,
     THEME_LIGHT,
     DEFAULT_COLOR_CONNECTION,
@@ -86,6 +85,7 @@ from ..window_resolver import (
 )
 from ..worker import ClientStatus, MonitorWorker, SplunkWorker
 from .overlays import AlarmOverlay
+from .splunk_dialog import SplunkEnvironmentsManagerDialog
 from .themes import build_stylesheet, get_palette
 
 logger = logging.getLogger(__name__)
@@ -327,20 +327,13 @@ class MainWindow(QMainWindow):
         layout.addLayout(numbers_row)
 
         splunk_row = QHBoxLayout()
-        splunk_row.addWidget(QLabel("Odpytywanie Splunk (s):"))
-        self.sb_splunk_interval = QSpinBox()
-        # Minimum twarde, nie tylko sugerowane - lookup es_notable_events
-        # odświeża się po stronie Splunka co ok. 5 minut, a częstsze
-        # odpytywanie z wielu stanowisk jednocześnie obciąża Search Head
-        # bez żadnej korzyści (ustalone wprost z administratorem Splunka).
-        self.sb_splunk_interval.setRange(MIN_SPLUNK_POLL_INTERVAL_SEC, 3600)
-        splunk_row.addWidget(self.sb_splunk_interval)
-        splunk_note = QLabel(
-            f"(minimum {MIN_SPLUNK_POLL_INTERVAL_SEC}s - środowiska "
-            "Splunk konfiguruje się na razie w settings.json)"
-        )
-        splunk_note.setStyleSheet("color: #777777;")
-        splunk_row.addWidget(splunk_note)
+        splunk_row.addWidget(QLabel("Środowiska Splunk:"))
+        self.btn_manage_splunk = QPushButton("Zarządzaj środowiskami...")
+        self.btn_manage_splunk.clicked.connect(self._on_manage_splunk_environments)
+        splunk_row.addWidget(self.btn_manage_splunk)
+        self.lbl_splunk_summary = QLabel()
+        self.lbl_splunk_summary.setStyleSheet("color: #777777;")
+        splunk_row.addWidget(self.lbl_splunk_summary)
         splunk_row.addStretch()
         layout.addLayout(splunk_row)
 
@@ -540,9 +533,7 @@ class MainWindow(QMainWindow):
         self.txt_base_dir.setText(s.base_dir)
         self.txt_phrases.setText("; ".join(s.default_phrases))
         self.sb_interval.setValue(s.interval_sec)
-        self.sb_splunk_interval.setValue(
-            max(s.splunk_poll_interval_sec, MIN_SPLUNK_POLL_INTERVAL_SEC)
-        )
+        self._update_splunk_summary()
         self.sb_display.setValue(s.alarm_display_sec)
         self.sb_repeat.setValue(s.alarm_repeat_sec)
         self.chk_first_scan.setChecked(s.alert_on_first_scan)
@@ -576,6 +567,42 @@ class MainWindow(QMainWindow):
             self.sl_volume.setEnabled(False)
             self.lbl_volume.setText("sys.")
 
+    def _update_splunk_summary(self) -> None:
+        envs = self._settings.splunk_environments
+        if not envs:
+            self.lbl_splunk_summary.setText("(brak skonfigurowanych środowisk)")
+            return
+        enabled = sum(1 for e in envs if e.enabled)
+        self.lbl_splunk_summary.setText(
+            f"{len(envs)} skonfigurowane ({enabled} aktywne)"
+        )
+
+    def _on_manage_splunk_environments(self) -> None:
+        """Otwiera menedżera środowisk Splunk i zapisuje wynik po zamknięciu.
+
+        Wynik dialogu jest stosowany niezależnie od tego, jak dokładnie
+        okno zostało zamknięte (przycisk "Zamknij", Esc, X) - każda
+        pojedyncza zmiana (dodanie/edycja/usunięcie) była już osobno
+        potwierdzona przez operatora wewnątrz samego dialogu, więc nie ma
+        tu osobnego pojęcia "anuluj wszystko na końcu".
+        """
+        other_labels = {c.label for c in self._settings.clients}
+        dialog = SplunkEnvironmentsManagerDialog(
+            environments=self._settings.splunk_environments,
+            other_labels=other_labels,
+            parent=self,
+        )
+        dialog.exec()
+
+        self._settings.splunk_environments = dialog.environments()
+        try:
+            save_settings(self._settings)
+        except ConfigError as exc:
+            self.log(f"Uwaga: nie udało się zapisać środowisk Splunk ({exc}).")
+        else:
+            self.log("Zaktualizowano konfigurację środowisk Splunk.")
+        self._update_splunk_summary()
+
     def _apply_ui_to_settings(self) -> bool:
         """Przenosi wartości z formularza do ustawień. Zwraca False przy błędzie."""
         phrases = tuple(
@@ -594,7 +621,6 @@ class MainWindow(QMainWindow):
             self._settings.base_dir = self.txt_base_dir.text().strip()
             self._settings.default_phrases = phrases
             self._settings.interval_sec = self.sb_interval.value()
-            self._settings.splunk_poll_interval_sec = self.sb_splunk_interval.value()
             self._settings.alarm_display_sec = self.sb_display.value()
             self._settings.alarm_repeat_sec = self.sb_repeat.value()
             self._settings.alert_on_first_scan = self.chk_first_scan.isChecked()
@@ -829,7 +855,12 @@ class MainWindow(QMainWindow):
         # wyszarza tekst tak, że w trybie ciemnym staje się nieczytelny.
         for field in (self.txt_base_dir, self.txt_phrases):
             field.setReadOnly(running)
-        for widget in (self.sb_interval, self.sb_splunk_interval, self.chk_first_scan, self.cb_alarm_mode):
+        for widget in (self.sb_interval, self.chk_first_scan, self.cb_alarm_mode,
+                       self.btn_manage_splunk):
+            # btn_manage_splunk jest tu z innego powodu niż reszta: SplunkWorker
+            # czyta self._settings.splunk_environments na WŁASNYM wątku w trakcie
+            # monitorowania - edycja tej listy z wątku GUI w tym samym czasie
+            # byłaby wyścigiem. Blokada eliminuje to, nie tylko "porządkuje UI".
             widget.setEnabled(not running)
 
     def _on_worker_finished(self) -> None:
@@ -1362,6 +1393,12 @@ class MainWindow(QMainWindow):
                 note = "brak połączenia z serwerem — dane nieaktualne"
             elif not note and status.is_minimized:
                 note = "okno zminimalizowane (monitorowanie działa)"
+            elif not note and status.note:
+                # Miękkie ostrzeżenie (np. token Splunk zbliża się do
+                # wygaśnięcia) - środowisko działa poprawnie, ale coś wymaga
+                # uwagi. Nigdy nie przesłania realnego błędu (error ma
+                # pierwszeństwo, sprawdzone wyżej).
+                note = status.note
 
             values = [
                 status.label,

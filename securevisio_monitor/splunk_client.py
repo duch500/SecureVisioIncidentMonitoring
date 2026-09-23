@@ -22,8 +22,12 @@ następuje w kolejnym etapie.
 
 from __future__ import annotations
 
+import base64
+import binascii
+import json
 import logging
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Optional
 
@@ -47,6 +51,44 @@ NEW_INCIDENT_STATUS = "1"
 _FIELDS = ("event_id", "status", "rule_name", "_time", "owner")
 
 _REQUEST_TIMEOUT_SEC = 15
+
+
+def decode_token_expiry(token: str) -> Optional[datetime]:
+    """Odczytuje rzeczywisty termin ważności z tokenu JWT (pole "exp").
+
+    Tokeny Splunk Authentication Token to JWT (zaczynają się od "eyJ") - drugi
+    segment (payload), zdekodowany z base64url, to zwykły JSON zawierający
+    m.in. "exp" (czas wygaśnięcia jako Unix timestamp), jeśli admin ustawił
+    taki token z określonym czasem życia. To jest RZECZYWISTA wartość, nie
+    założenie - różne tokeny mogą mieć różny okres ważności (potwierdzone
+    wprost: "nie każdy token ma 14 dni ważności"), więc nie zgadujemy, tylko
+    czytamy to, co token faktycznie o sobie mówi.
+
+    Nie weryfikuje podpisu JWT - to nie jest kontrola bezpieczeństwa (o tym
+    i tak decyduje wyłącznie serwer Splunk przy każdym zapytaniu), tylko
+    odczyt metadanych do wyświetlenia operatorowi.
+
+    Returns:
+        Termin ważności jako datetime (UTC), albo None, jeśli token nie jest
+        poprawnym JWT, nie ma pola "exp", albo cokolwiek innego nie pozwala
+        tego jednoznacznie odczytać - w takim wypadku po prostu NIE MAMY tej
+        informacji, nie zgadujemy zastępczej wartości.
+    """
+    if not token or token.count(".") != 2:
+        return None
+
+    try:
+        payload_b64 = token.split(".")[1]
+        # base64url wymaga uzupełnienia do wielokrotności 4 znaków paddingiem "=".
+        padding = "=" * (-len(payload_b64) % 4)
+        payload_bytes = base64.urlsafe_b64decode(payload_b64 + padding)
+        payload = json.loads(payload_bytes)
+        exp = payload.get("exp")
+        if exp is None:
+            return None
+        return datetime.fromtimestamp(float(exp), tz=timezone.utc)
+    except (ValueError, TypeError, KeyError, UnicodeDecodeError, binascii.Error):
+        return None
 
 
 class SplunkErrorKind(Enum):

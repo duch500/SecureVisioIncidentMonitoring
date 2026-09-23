@@ -6,6 +6,16 @@ ustawień - nie zawiera logiki odczytu okien ani wykrywania zdarzeń.
 Plik konfiguracyjny (domyślnie settings.json) jest edytowalny ręcznie, ale
 docelowo ma być zarządzany przez GUI. Struktura jest projektowana pod kątem
 czytelności przy ręcznej edycji, na wypadek potrzeby szybkiej poprawki.
+
+Domyślna ścieżka jest rozwiązywana względem katalogu, w którym faktycznie
+leży uruchomiony program (icon.get_app_dir()), NIE względem katalogu
+roboczego procesu - to samo rozwiązanie, co dla ikony aplikacji. Bez tego
+zbudowany .exe uruchomiony w inny sposób niż podczas testów (np. inny
+katalog aktywny w terminalu, inne "Start in" skrótu) mógłby czytać i
+zapisywać zupełnie inny, osobny plik settings.json niż ten, który
+użytkownik świadomie edytował - co dokładnie wydarzyło się przy integracji
+Splunka: konfiguracja środowisk trafiała do jednej kopii pliku, a zbudowany
+.exe czytał inną, nieaktualną.
 """
 
 from __future__ import annotations
@@ -16,9 +26,11 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Optional
 
+from .icon import get_app_dir
+
 logger = logging.getLogger(__name__)
 
-DEFAULT_SETTINGS_PATH = Path("settings.json")
+DEFAULT_SETTINGS_PATH = get_app_dir() / "settings.json"
 DEFAULT_INTERVAL_SEC = 10
 DEFAULT_ALARM_DISPLAY_SEC = 10
 DEFAULT_ALARM_REPEAT_SEC = 60
@@ -56,6 +68,12 @@ ALARM_MODES = (ALARM_MODE_FULLSCREEN, ALARM_MODE_TOAST)
 # ujemną wartością), który zamieniłby monitor w pętlę obciążającą CPU.
 MIN_INTERVAL_SEC = 2
 
+# Minimum dla odpytywania Splunka - ustalone świadomie znacznie wyższe niż
+# MIN_INTERVAL_SEC (SecureVisio). Lookup es_notable_events odświeża się po
+# stronie Splunka co ok. 5 minut (search "ESS - Notable Events"); częstsze
+# odpytywanie z wielu stanowisk jednocześnie obciąża Search Head bez żadnej
+# korzyści, bo i tak zwróci te same dane między cyklami odświeżenia.
+MIN_SPLUNK_POLL_INTERVAL_SEC = 120
 
 def _is_valid_color(value: str) -> bool:
     """Sprawdza format #RRGGBB - inne wartości mogłyby zepsuć wygląd alarmu."""
@@ -121,6 +139,81 @@ class ClientProfile:
 
 
 @dataclass
+class SplunkEnvironment:
+    """Konfiguracja pojedynczego monitorowanego środowiska Splunk.
+
+    W odróżnieniu od ClientProfile (SecureVisio, odczyt lokalny przez UI
+    Automation) każde środowisko Splunk wymaga własnego adresu sieciowego
+    i tokenu - to są niezależne instancje, nie warianty tej samej aplikacji
+    na dysku.
+
+    Attributes:
+        label: Nazwa wyświetlana w tabeli i na alarmie (np. "Klient A - Splunk").
+        rest_host: Adres Search Heada (sam host/IP, bez schematu i portu).
+        rest_port: Port REST API (splunkd) - domyślnie 8089.
+        web_port: Port interfejsu webowego (Splunk Web) - domyślnie 8000.
+            Używany wyłącznie do otwarcia środowiska w przeglądarce po
+            kliknięciu "Pokaż"; nigdy do zapytań REST.
+        token: Token uwierzytelniania (Settings -> Tokens), właściwy
+            wyłącznie dla tego jednego środowiska.
+        token_set_at_iso: Znacznik czasu (ISO 8601) ostatniej zmiany tokenu -
+            informacyjne "kiedy wpisano", niezależne od faktycznego terminu
+            ważności. Sam termin ważności (jeśli w ogóle jest odczytywalny)
+            pochodzi z treści samego tokenu JWT (pole "exp") - patrz
+            splunk_client.decode_token_expiry(). Różne tokeny mogą mieć różny
+            okres ważności, więc aplikacja świadomie nie zakłada żadnej stałej
+            liczby dni.
+        verify_ssl: Czy weryfikować certyfikat TLS Search Heada. Domyślnie
+            False, bo wewnętrzne instancje Splunka w praktyce niemal zawsze
+            używają certyfikatu self-signed - potwierdzone empirycznie
+            podczas PoC.
+        poll_interval_sec: Odstęp między odczytami TEGO KONKRETNEGO
+            środowiska. Ustalone wprost: różne Search Heady mają różną
+            wytrzymałość (część wymaga aż 10 minut, większość 2 minut) -
+            interwał jest właściwością środowiska, nie globalnym ustawieniem
+            aplikacji. Minimum egzekwowane niezależnie od tego, jak słaby
+            jest Search Head - patrz MIN_SPLUNK_POLL_INTERVAL_SEC.
+        enabled: Czy środowisko ma być aktywnie odpytywane.
+    """
+
+    label: str
+    rest_host: str
+    rest_port: int = 8089
+    web_port: int = 8000
+    token: str = ""
+    token_set_at_iso: str = ""
+    verify_ssl: bool = False
+    poll_interval_sec: int = MIN_SPLUNK_POLL_INTERVAL_SEC
+    enabled: bool = True
+
+    def __post_init__(self) -> None:
+        if not self.label.strip():
+            raise ConfigError("Etykieta środowiska Splunk nie może być pusta.")
+        if not self.rest_host.strip():
+            raise ConfigError(f"Środowisko '{self.label}': adres Search Heada nie może być pusty.")
+        for port_name, port_value in (("rest_port", self.rest_port), ("web_port", self.web_port)):
+            if not (1 <= port_value <= 65535):
+                raise ConfigError(
+                    f"Środowisko '{self.label}': {port_name}={port_value} poza zakresem 1-65535."
+                )
+        if self.poll_interval_sec < MIN_SPLUNK_POLL_INTERVAL_SEC:
+            raise ConfigError(
+                f"Środowisko '{self.label}': poll_interval_sec musi wynosić co "
+                f"najmniej {MIN_SPLUNK_POLL_INTERVAL_SEC}s "
+                f"(otrzymano {self.poll_interval_sec})."
+            )
+
+    @property
+    def rest_base_url(self) -> str:
+        return f"https://{self.rest_host}:{self.rest_port}"
+
+    @property
+    def web_url(self) -> str:
+        """Adres do otwarcia w przeglądarce - samo środowisko, nie konkretny incydent."""
+        return f"https://{self.rest_host}:{self.web_port}"
+
+
+@dataclass
 class AppSettings:
     """Ustawienia globalne aplikacji.
 
@@ -155,7 +248,11 @@ class AppSettings:
         sound_enabled_connection: Dźwięk przy alarmie o zerwanym połączeniu.
         sound_file_connection: Plik dźwiękowy dla zerwanego połączenia.
         sound_volume: Głośność 0-100, nakładana na głośność systemu.
-        clients: Lista skonfigurowanych profili klientów.
+        clients: Lista skonfigurowanych profili klientów (SecureVisio).
+        splunk_environments: Lista skonfigurowanych środowisk Splunk. Każde
+            niesie własny interwał odpytywania (SplunkEnvironment.poll_interval_sec)
+            - ustalone wprost: różne Search Heady mają różną wytrzymałość,
+            więc to nie może być jedno, globalne ustawienie aplikacji.
     """
 
     base_dir: str = ""
@@ -184,6 +281,7 @@ class AppSettings:
     sound_file_connection: str = ""
     sound_volume: int = 80
     clients: list[ClientProfile] = field(default_factory=list)
+    splunk_environments: list[SplunkEnvironment] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         if self.interval_sec < MIN_INTERVAL_SEC:
@@ -229,15 +327,30 @@ class AppSettings:
         self._check_duplicate_labels()
 
     def _check_duplicate_labels(self) -> None:
+        """Sprawdza unikalność etykiet łącznie dla klientów SecureVisio i Splunka.
+
+        Oba typy środowisk dzielą tę samą tabelę w GUI (ustalone przy
+        projektowaniu integracji Splunka), więc dwie identyczne etykiety
+        w różnych listach byłyby tak samo mylące jak w jednej.
+        """
         seen: dict[str, str] = {}
         for client in self.clients:
             key = client.label.strip().casefold()
             if key in seen:
                 raise ConfigError(
-                    f"Zduplikowana etykieta klienta: '{client.label}' "
+                    f"Zduplikowana etykieta: '{client.label}' "
                     f"(koliduje z '{seen[key]}'). Etykiety muszą być unikalne."
                 )
             seen[key] = client.label
+        for env in self.splunk_environments:
+            key = env.label.strip().casefold()
+            if key in seen:
+                raise ConfigError(
+                    f"Zduplikowana etykieta: '{env.label}' "
+                    f"(koliduje z '{seen[key]}'). Etykiety muszą być unikalne "
+                    f"między środowiskami SecureVisio i Splunk."
+                )
+            seen[key] = env.label
 
     def manual_map(self) -> dict[str, str]:
         """Mapa ścieżka_exe -> etykieta dla klientów z ręcznie przypisaną ścieżką.
@@ -263,6 +376,28 @@ class AppSettings:
         if self.find_client(client.label) is not None:
             raise ConfigError(f"Klient '{client.label}' już istnieje.")
         self.clients.append(client)
+
+    def enabled_splunk_environments(self) -> list[SplunkEnvironment]:
+        """Zwraca tylko środowiska Splunk oznaczone jako aktywnie odpytywane."""
+        return [e for e in self.splunk_environments if e.enabled]
+
+    def find_splunk_environment(self, label: str) -> Optional[SplunkEnvironment]:
+        """Wyszukuje środowisko Splunk po etykiecie (bez uwzględniania wielkości liter)."""
+        key = label.strip().casefold()
+        for env in self.splunk_environments:
+            if env.label.strip().casefold() == key:
+                return env
+        return None
+
+    def add_splunk_environment(self, env: SplunkEnvironment) -> None:
+        """Dodaje nowe środowisko Splunk, odrzucając duplikat etykiety."""
+        if self.find_splunk_environment(env.label) is not None:
+            raise ConfigError(f"Środowisko Splunk '{env.label}' już istnieje.")
+        if self.find_client(env.label) is not None:
+            raise ConfigError(
+                f"Etykieta '{env.label}' jest już użyta przez klienta SecureVisio."
+            )
+        self.splunk_environments.append(env)
 
     def remove_client(self, label: str) -> bool:
         """Usuwa klienta po etykiecie. Zwraca True, jeśli coś usunięto."""
@@ -294,6 +429,31 @@ class AppSettings:
             )
             for c in raw_clients
         ]
+        raw_splunk = data.get("splunk_environments", [])
+        # Wsteczna zgodność: stare pliki miały jeden, globalny
+        # splunk_poll_interval_sec zamiast interwału per-środowisko. Jeśli
+        # konkretne środowisko nie ma jeszcze własnej wartości, używamy tej
+        # starej, globalnej jako sensowniejszego fallbacku niż cichy reset
+        # do twardego minimum - zachowuje dotychczasowe zachowanie zamiast
+        # niespodziewanie przyspieszać odpytywanie komuś, kto świadomie
+        # ustawił wyższą wartość przed wprowadzeniem interwałów per-środowisko.
+        legacy_interval_fallback = data.get(
+            "splunk_poll_interval_sec", MIN_SPLUNK_POLL_INTERVAL_SEC
+        )
+        splunk_environments = [
+            SplunkEnvironment(
+                label=e["label"],
+                rest_host=e["rest_host"],
+                rest_port=e.get("rest_port", 8089),
+                web_port=e.get("web_port", 8000),
+                token=e.get("token", ""),
+                token_set_at_iso=e.get("token_set_at_iso", ""),
+                verify_ssl=e.get("verify_ssl", False),
+                poll_interval_sec=e.get("poll_interval_sec", legacy_interval_fallback),
+                enabled=e.get("enabled", True),
+            )
+            for e in raw_splunk
+        ]
         return cls(
             base_dir=data.get("base_dir", ""),
             interval_sec=data.get("interval_sec", DEFAULT_INTERVAL_SEC),
@@ -320,6 +480,7 @@ class AppSettings:
             sound_file_connection=data.get("sound_file_connection", ""),
             sound_volume=data.get("sound_volume", 80),
             clients=clients,
+            splunk_environments=splunk_environments,
         )
 
 

@@ -1,6 +1,6 @@
 # SecureVisio Monitor
 
-> Program pilnuje wszystkich Twoich środowisk SecureVisio i głośno informuje o nowym zdarzeniu.
+> Program pilnuje wszystkich Twoich środowisk SecureVisio i Splunk, i głośno informuje o nowym zdarzeniu.
 
 Instrukcja nie wymaga wiedzy programistycznej.
 
@@ -10,6 +10,7 @@ Instrukcja nie wymaga wiedzy programistycznej.
 - [Co trzeba przygotować](#co-trzeba-przygotować)
 - [Przygotowanie komputera (tylko wersja źródłowa)](#przygotowanie-komputera-tylko-wersja-źródłowa)
 - [Pierwsze uruchomienie i konfiguracja](#pierwsze-uruchomienie-i-konfiguracja)
+- [Monitorowanie środowisk Splunk](#monitorowanie-środowisk-splunk)
 - [Codzienna obsługa](#codzienna-obsługa)
 - [Sposób alarmowania: pełny ekran czy powiadomienia Windows](#sposób-alarmowania-pełny-ekran-czy-powiadomienia-windows)
 - [Kolory alarmów](#kolory-alarmów)
@@ -22,25 +23,27 @@ Instrukcja nie wymaga wiedzy programistycznej.
 
 ## Czym jest ten program
 
-Kiedy pracujesz z kilkoma środowiskami SecureVisio jednocześnie, łatwo przeoczyć moment, w którym w jednym z nich pojawia się nowe zdarzenie. Trzeba pamiętać, żeby regularnie zaglądać do każdego okna po kolei.
+Kiedy pracujesz z kilkoma środowiskami SecureVisio (i coraz częściej też Splunk) jednocześnie, łatwo przeoczyć moment, w którym w jednym z nich pojawia się nowe zdarzenie. Trzeba pamiętać, żeby regularnie zaglądać do każdego okna albo karty przeglądarki po kolei.
 
-**SecureVisio Monitor robi to za Ciebie.** Co kilkanaście sekund sprawdza wszystkie środowiska naraz, a gdy pojawi się nowe zdarzenie — alarmuje w sposób, który sam wybierzesz: dużym czerwonym ekranem na wszystkich monitorach albo powiadomieniem systemowym Windows w rogu ekranu, w obu przypadkach z sygnałem dźwiękowym.
+**SecureVisio Monitor robi to za Ciebie — dla obu systemów naraz, w jednej wspólnej tabeli.** SecureVisio sprawdzane jest co kilkanaście sekund, Splunk co kilka minut (zależnie od wytrzymałości danego Search Heada). Gdy pojawi się nowe zdarzenie — program alarmuje w sposób, który sam wybierzesz: dużym czerwonym ekranem na wszystkich monitorach albo powiadomieniem systemowym Windows w rogu ekranu, w obu przypadkach z sygnałem dźwiękowym. Alarmy pochodzące ze Splunka są dodatkowo oznaczone napisem „[Splunk]", żebyś od razu wiedział, z którego systemu pochodzi zdarzenie.
 
 ### Co program potrafi
 
-- ✅ Pilnuje jednocześnie wielu środowisk SecureVisio — dowolnej liczby
+- ✅ Pilnuje jednocześnie wielu środowisk SecureVisio **i** Splunk — dowolnej liczby każdego
 - ✅ Działa również wtedy, gdy okna SecureVisio są zminimalizowane lub zasłonięte innymi programami
+- ✅ Środowiska Splunk odpytuje przez API, więc karta przeglądarki wcale nie musi być otwarta
 - ✅ Nie przeszkadza w pracy — nie przełącza okien i nie zabiera Ci klawiatury
-- ✅ Informuje, którego klienta dotyczy zdarzenie
-- ✅ Pozwala jednym kliknięciem otworzyć na pełnym ekranie środowisko, w którym coś się wydarzyło
+- ✅ Informuje, którego klienta i którego systemu (SecureVisio czy Splunk) dotyczy zdarzenie
+- ✅ Pozwala jednym kliknięciem otworzyć środowisko, w którym coś się wydarzyło — okno SecureVisio na pełnym ekranie albo Splunka w przeglądarce
 - ✅ Budzi sygnałem dźwiękowym — przydatne podczas dyżuru nocnego
 - ✅ Wykrywa też, gdy SecureVisio straci połączenie z serwerem albo gdy jakieś środowisko zostanie zamknięte
+- ✅ Ostrzega z wyprzedzeniem, gdy token dostępu do Splunka zbliża się do wygaśnięcia
 - ✅ Pozwala wybrać, czy alarm ma być pełnoekranowy, czy w formie powiadomienia Windows
 - ✅ Pozwala dowolnie ustawić kolor tła każdego rodzaju alarmu
 
 ### Czego program nie robi
 
-- ❌ Nie zmienia niczego w systemie SecureVisio — wyłącznie odczytuje
+- ❌ Nie zmienia niczego w systemie SecureVisio ani Splunk — wyłącznie odczytuje
 - ❌ Nie obsługuje incydentów za Ciebie
 - ❌ Nie wysyła powiadomień na telefon ani e-mailem
 - ❌ Nie zapisuje historii zdarzeń
@@ -55,11 +58,12 @@ Zanim zaczniesz, upewnij się, że masz wszystko z poniższej listy.
 | Element | Uwagi |
 |---|---|
 | Komputer z systemem Windows | Program działa tylko na Windows |
-| Zainstalowane środowiska SecureVisio | Te same, których używasz na co dzień |
+| Zainstalowane środowiska SecureVisio | Te same, których używasz na co dzień — opcjonalne, jeśli monitorujesz tylko Splunk |
+| Dane dostępowe do Splunka (opcjonalnie) | Adres, port i token od administratora — patrz [Monitorowanie środowisk Splunk](#monitorowanie-środowisk-splunk); niepotrzebne, jeśli monitorujesz tylko SecureVisio |
 | Pliki programu SecureVisio Monitor | Katalog otrzymany od osoby przekazującej program |
 | Około 15 minut na pierwsze uruchomienie | Kolejne uruchomienia zajmują kilka sekund |
 
-Nie potrzebujesz uprawnień administratora. Nie potrzebujesz dostępu do internetu — program działa wyłącznie na Twoim komputerze.
+Nie potrzebujesz uprawnień administratora. Monitorowanie SecureVisio działa wyłącznie na Twoim komputerze, bez dostępu do sieci. Monitorowanie Splunka **wymaga** dostępu do adresu Search Heada w sieci firmowej (nie do internetu) — jeśli monitorujesz tylko SecureVisio, ten wymóg Cię nie dotyczy.
 
 ### Dwie wersje programu
 
@@ -213,6 +217,72 @@ Sprawdź też dźwięk — kliknij przycisk **„Odtwórz"** obok listy dźwięk
 
 > Ustaw głośność tak, żeby alarm był słyszalny również wtedy, gdy odejdziesz od biurka. Jeżeli planujesz dyżur nocny, sprawdź to przy nocnych ustawieniach głośności komputera.
 
+## Monitorowanie środowisk Splunk
+
+Splunk działa zupełnie inaczej niż SecureVisio — program nie patrzy na żadne okno ani kartę przeglądarki, tylko łączy się bezpośrednio z serwerem Splunka przez API. Dzięki temu Splunk jest monitorowany, nawet jeśli w ogóle nie masz otwartej żadnej karty ze Splunkiem.
+
+### Czego potrzebujesz od administratora Splunka
+
+Dla **każdego** środowiska Splunk, które chcesz monitorować, potrzebujesz od administratora:
+
+- **adresu Search Heada** (np. `172.18.41.14`) i **portu REST API** (zwykle `8089`)
+- **tokenu dostępu** (Authentication Token z `Settings → Tokens` w Splunku — **nie** tokenu HEC, to inny mechanizm)
+- potwierdzenia, **jak często** program może bezpiecznie odpytywać to konkretne środowisko — różne Search Heady mają różną wytrzymałość; słabsze mogą wymagać nawet 10 minut (600 sekund) odstępu zamiast standardowych 2 minut (120 sekund)
+
+> [!WARNING]
+> Nie zgaduj interwału odpytywania. Zbyt częste odpytywanie słabego Search Heada może realnie obciążyć infrastrukturę używaną też przez innych analityków. Zawsze ustal bezpieczną wartość z administratorem Splunka.
+
+### Dodanie środowiska Splunk
+
+1. W oknie programu kliknij **„Ustawienia"**, żeby je rozwinąć
+2. Przy polu „Środowiska Splunk" kliknij **„Zarządzaj środowiskami..."**
+3. Kliknij **„Dodaj..."**
+4. Wypełnij formularz:
+
+   | Pole | Co wpisać |
+   |---|---|
+   | Etykieta | Dowolna, rozpoznawalna nazwa (np. „Klient A - Splunk") — musi być unikalna, także względem środowisk SecureVisio |
+   | Adres Search Heada | Sam adres/IP, bez `https://` i bez portu |
+   | Port REST API | Zwykle `8089` |
+   | Port Splunk Web | Zwykle `8000` — używany wyłącznie do przycisku „Pokaż" |
+   | Token | Wklej Authentication Token otrzymany od administratora |
+   | Interwał odpytywania (s) | Wartość ustalona z administratorem — minimum 120, maksimum 10000 |
+   | Weryfikuj certyfikat TLS | Zostaw odznaczone, jeśli Search Head ma certyfikat self-signed (typowe dla środowisk wewnętrznych) |
+
+5. Kliknij **„Testuj połączenie"**, żeby sprawdzić, zanim zapiszesz — patrz niżej
+6. Kliknij **„OK"**, potem **„Zamknij"**
+
+✔️ Nowe środowisko pojawi się w tabeli głównej po kliknięciu „Start".
+
+> [!NOTE]
+> Przycisku „Zarządzaj środowiskami..." (i pól formularza) nie da się użyć w trakcie monitorowania — kliknij najpierw „Stop".
+
+### Testowanie połączenia przed zapisaniem
+
+Przycisk **„Testuj połączenie"** w formularzu wykonuje prawdziwe zapytanie do Splunka — dokładnie takie samo, jakiego program użyje później w praktyce — i pokazuje wynik od razu, bez zamykania okna.
+
+- ✅ **Zielony wynik** — połączenie działa, dane są odczytywalne
+- ❌ **Czerwony wynik** — pokazuje dokładną przyczynę (zły token, błąd sieci, przeciążenie serwera)
+
+> [!IMPORTANT]
+> Każdy adres można testować **nie częściej niż raz na 10 minut** — to celowe ograniczenie, żeby ręczne testowanie nie obciążało Search Heada tak samo, jak zbyt częste odpytywanie w tle. Jeśli spróbujesz częściej, program pokaże, ile jeszcze trzeba poczekać.
+
+### Ostrzeżenie o wygasającym tokenie
+
+Tokeny dostępu do Splunka mają ograniczony czas ważności — **różny dla różnych tokenów**, program nigdy nie zakłada z góry konkretnej liczby dni. Jeśli token jest w standardowym formacie, program odczytuje jego rzeczywisty termin ważności i ostrzega z wyprzedzeniem:
+
+- **W formularzu edycji środowiska** — pod polem tokenu, widoczne od razu przy otwarciu albo wklejeniu nowego tokenu
+- **W kolumnie „Uwagi" głównej tabeli** — gdy do wygaśnięcia zostały 3 dni lub mniej, albo token już wygasł
+
+Jeśli programowi nie uda się odczytać terminu ważności z tokenu (np. inny format), po prostu nic nie pokaże w tej sprawie — nie zgaduje zastępczej wartości.
+
+### Różnice względem SecureVisio, o których warto wiedzieć
+
+- Przycisk **„Pokaż"** przy środowisku Splunk otwiera w przeglądarce **stronę główną tego środowiska**, nie konkretny incydent — Splunk nie ma tu tak prostego adresu jak SecureVisio
+- Stan **NIEDOSTĘPNY** dla Splunka oznacza błąd połączenia z API (zły token, sieć, przeciążenie), nie „złe okno" jak przy SecureVisio — dokładny powód widać w kolumnie „Uwagi"
+- Alarmy pochodzące ze Splunka mają w treści dopisek **„[Splunk]"**, żebyś od razu wiedział, że to nie SecureVisio
+- Jeśli incydent w Splunku zostanie zamknięty, po prostu zniknie z listy — program **nie** traktuje tego jak alarm (w odróżnieniu od zamknięcia okna SecureVisio)
+
 ## Codzienna obsługa
 
 ### Rozpoczęcie pracy
@@ -316,6 +386,7 @@ Wszystkie ustawienia znajdują się w środkowej części okna i zapisują się 
 | Kolory alarmów | Kolor tła każdego rodzaju alarmu | Patrz [sekcja wyżej](#kolory-alarmów) |
 | Dźwięk alarmu | Włącza sygnał dźwiękowy i pozwala wybrać plik | Odznacz, gdy pracujesz w ciszy |
 | Głośność | Głośność sygnału względem głośności systemu | Ustaw raz, na początku |
+| Środowiska Splunk | Otwiera okno zarządzania środowiskami Splunk | Patrz [sekcja wyżej](#monitorowanie-środowisk-splunk) |
 
 ### Ważne: sprawdź frazy przy pierwszym zdarzeniu
 
@@ -505,8 +576,58 @@ Zmień „Sposób alarmowania" na „Pełny ekran", jeżeli chcesz mieć możliw
 
 </details>
 
+<details>
+<summary><strong>Środowisko Splunk ma stan NIEDOSTĘPNY</strong></summary>
+
+**Co widzisz:** Wiersz środowiska Splunk jest pomarańczowy, w kolumnie Uwagi widnieje komunikat błędu.
+
+**Dlaczego:** W odróżnieniu od SecureVisio, dla Splunka to zawsze oznacza problem z połączeniem do API — zły albo wygasły token, adres nieosiągalny, albo Search Head odrzucił zapytanie. Treść komunikatu w kolumnie Uwagi mówi dokładnie, co się stało.
+
+**Co zrobić:**
+1. Otwórz **„Zarządzaj środowiskami..."** w ustawieniach (musisz najpierw kliknąć „Stop")
+2. Zaznacz to środowisko i kliknij **„Edytuj..."**
+3. Kliknij **„Testuj połączenie"**, żeby zobaczyć dokładny wynik
+4. Jeżeli komunikat mówi o błędzie autoryzacji — sprawdź token (mógł wygasnąć, patrz niżej) i ewentualnie poproś administratora Splunka o nowy
+
+✔️ Test połączenia pokazuje zielony wynik, a po restarcie monitorowania wiersz zmienia kolor na zielony.
+
+</details>
+
+<details>
+<summary><strong>Widzę komunikat „TOO MANY REQUESTS" przy środowisku Splunk</strong></summary>
+
+**Co widzisz:** W kolumnie Uwagi napis o zbyt wielu zapytaniach.
+
+**Dlaczego:** Search Head odrzucił zapytanie, bo w danym momencie jest przeciążony — może odpytywać go w tym samym czasie zbyt wielu analityków naraz.
+
+**Co zrobić:**
+1. Nic nie rób od razu — program spróbuje ponownie przy kolejnym cyklu automatycznie
+2. Jeżeli komunikat pojawia się uporczywie, przy każdym cyklu — zgłoś to administratorowi Splunka, być może interwał odpytywania tego środowiska jest ustawiony zbyt agresywnie względem wytrzymałości Search Heada
+
+✔️ Wiersz wraca do stanu OK, gdy Search Head przestaje być przeciążony.
+
+</details>
+
+<details>
+<summary><strong>Ostrzeżenie o wygasającym tokenie Splunk</strong></summary>
+
+**Co widzisz:** W kolumnie Uwagi napis w rodzaju „token Splunk wygasa za 2 dni" albo „token Splunk prawdopodobnie WYGASŁ".
+
+**Dlaczego:** Program odczytał rzeczywisty termin ważności z samego tokenu i zbliża się on do końca (albo już minął).
+
+**Co zrobić:**
+1. Poproś administratora Splunka o nowy token dla tego środowiska
+2. Otwórz **„Zarządzaj środowiskami..."** (po kliknięciu „Stop"), zaznacz środowisko, kliknij **„Edytuj..."**
+3. Wklej nowy token w pole „Token" — etykieta pod polem od razu pokaże nowy termin ważności
+4. Kliknij **„Testuj połączenie"**, żeby potwierdzić, że nowy token działa
+5. Kliknij **„OK"**, potem **„Zamknij"**, i uruchom monitorowanie ponownie
+
+✔️ Ostrzeżenie znika z kolumny Uwagi po odświeżeniu środowiska z nowym tokenem.
+
+</details>
+
 > [!TIP]
-> **Najczęstsza przyczyna problemów:** jeżeli coś nie działa, w dziewięciu przypadkach na dziesięć któreś okno SecureVisio nie jest ustawione na widoku listy incydentów. Sprawdź to najpierw.
+> **Najczęstsza przyczyna problemów:** jeżeli coś nie działa, w dziewięciu przypadkach na dziesięć któreś okno SecureVisio nie jest ustawione na widoku listy incydentów. Sprawdź to najpierw. Dla środowisk Splunk najczęstszą przyczyną jest wygasły albo błędnie wklejony token.
 
 ## Gdzie szukać informacji
 
@@ -598,13 +719,16 @@ Program nie aktualizuje się sam. Gdy otrzymasz nową wersję:
 | 🟠 ŚRODOWISKO ZAMKNIĘTE | Okno SecureVisio zostało zamknięte | Sprawdź, czy to zamierzone |
 | 🟣 ZERWANE POŁĄCZENIE | SecureVisio utracił połączenie z serwerem | Kliknij „Pokaż" i ponów próbę w SecureVisio |
 
-> Domyślne kolory alarmów można zmienić w ustawieniach — patrz [Kolory alarmów](#kolory-alarmów). Powyższe kolory to ustawienia fabryczne.
+> Domyślne kolory alarmów można zmienić w ustawieniach — patrz [Kolory alarmów](#kolory-alarmów). Powyższe kolory to ustawienia fabryczne. Alarmy pochodzące ze Splunka mają dodatkowo dopisek „[Splunk]" w treści.
 
 ### O czym warto pamiętać
 
 - Uruchomienie programu to **nie to samo** co kliknięcie „Start"
 - Okna SecureVisio mogą być zminimalizowane — program i tak je czyta
-- Widok „Incydenty" musi być ustawiony w każdym monitorowanym oknie
+- Widok „Incydenty" musi być ustawiony w każdym monitorowanym oknie SecureVisio
+- Środowiska Splunk nie wymagają otwartej karty przeglądarki — program łączy się z nimi bezpośrednio
 - Przy pierwszym prawdziwym zdarzeniu sprawdź, czy napis w kolumnie Status zgadza się z ustawieniami
 - Wybór koloru alarmu dotyczy tylko trybu pełnoekranowego, nie powiadomień Windows
+- Interwał odpytywania każdego środowiska Splunk ustal z administratorem Splunka — nie zgaduj
+- Token dostępu do Splunka może wygasnąć — program ostrzega z wyprzedzeniem w kolumnie Uwagi
 - Program nie zastępuje obsługi incydentów — tylko informuje, że coś się pojawiło

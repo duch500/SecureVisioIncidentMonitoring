@@ -13,7 +13,7 @@ from __future__ import annotations
 import logging
 import time
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from PySide6.QtCore import QThread, Signal
@@ -23,6 +23,7 @@ from .splunk_client import (
     NEW_INCIDENT_STATUS,
     SplunkClient,
     SplunkQueryError,
+    decode_token_expiry,
     fetch_with_retry,
 )
 from .state_machine import EventAlert, MonitorState
@@ -39,6 +40,16 @@ logger = logging.getLogger(__name__)
 # odcinkami, żeby zatrzymanie monitora nie czekało na pełny interwał.
 _SLEEP_STEP_SEC = 0.1
 
+# Jak często SplunkWorker sprawdza, czy któreś środowisko jest już należne.
+# Znacznie mniejsze niż jakikolwiek realny interwał (minimum 120s), więc nie
+# wprowadza zauważalnego opóźnienia w wykryciu, że czas minął - a jednocześnie
+# nie jest tak częste, żeby marnować cykle procesora na sprawdzanie w kółko.
+_SPLUNK_TICK_SEC = 5
+
+# Próg ostrzeżenia w kolumnie Uwagi - ten sam próg co kolorystyka w dialogu
+# edycji środowiska (splunk_dialog.py), żeby oba miejsca zgadzały się ze sobą.
+_TOKEN_EXPIRY_WARNING_DAYS = 3
+
 
 @dataclass
 class ClientStatus:
@@ -52,6 +63,11 @@ class ClientStatus:
     active_events: int = 0
     is_minimized: bool = False
     error: str = ""
+    # Miękkie ostrzeżenie (w odróżnieniu od error) - środowisko działa
+    # poprawnie, ale jest coś, o czym operator powinien wiedzieć (na razie:
+    # zbliżający się/miniony termin ważności tokenu Splunk). Nigdy nie
+    # nadpisuje realnego błędu w kolumnie Uwagi - error ma pierwszeństwo.
+    note: str = ""
     method: str = "UI Automation"
     connection_lost: bool = False
 
@@ -446,6 +462,13 @@ class _SplunkRuntime:
     # log ma odnotować MOMENT utraty i przywrócenia dostępności, nie każdą
     # kolejną, wciąż trwającą awarię.
     was_available: bool = True
+    # Znacznik czasu (time.monotonic()), kiedy to KONKRETNE środowisko ma
+    # być odpytane ponownie - każde środowisko ma własny interwał
+    # (SplunkEnvironment.poll_interval_sec), więc żadne nie może czekać na
+    # wspólny, globalny zegar. 0.0 oznacza "należne od razu" (pierwsze
+    # wystąpienie w tej sesji) - bezpieczny sentinel, bo time.monotonic()
+    # jest zawsze dodatnie w trakcie działania procesu.
+    next_due_at: float = 0.0
 
 
 class SplunkWorker(QThread):
@@ -527,40 +550,57 @@ class SplunkWorker(QThread):
         super().start(*args, **kwargs)
 
     def run(self) -> None:  # noqa: D102 - API QThread
+        """Pętla główna - sprawdza co _TICK_SEC, czy któreś środowisko jest należne.
+
+        W odróżnieniu od poprzedniej wersji (jeden wspólny sen na cały cykl)
+        każde środowisko ma WŁASNY interwał (SplunkEnvironment.poll_interval_sec)
+        - ustalone wprost: część Search Headów wymaga 10 minut, większość 2
+        minut, więc żaden pojedynczy, globalny sen by tego nie obsłużył bez
+        blokowania szybszych środowisk czasem najwolniejszego, albo odwrotnie.
+        Ten wątek "budzi się" często (co _TICK_SEC), ale odpytuje tylko te
+        środowiska, których własny termin faktycznie minął - reszta czeka
+        dalej, niezauważona.
+        """
         self._runtimes.clear()
         self.log_message.emit("Rozpoczęto monitorowanie Splunk.")
-        logger.debug(
-            "SplunkWorker wystartował (interwał %ds).",
-            self._settings.splunk_poll_interval_sec,
-        )
+        logger.debug("SplunkWorker wystartował.")
 
-        self._run_cycle()
-
+        next_tick = time.monotonic()
         while self._running:
-            self._sleep_interval()
-            if not self._running:
-                break
-            self._run_cycle()
+            now = time.monotonic()
+            if now >= next_tick:
+                self._run_cycle()
+                next_tick = now + _SPLUNK_TICK_SEC
+            time.sleep(_SLEEP_STEP_SEC)
 
         self.log_message.emit("Zatrzymano monitorowanie Splunk.")
         logger.debug("SplunkWorker zakończył pracę.")
 
-    def _sleep_interval(self) -> None:
-        deadline = time.monotonic() + self._settings.splunk_poll_interval_sec
-        while self._running and time.monotonic() < deadline:
-            time.sleep(_SLEEP_STEP_SEC)
-
     def _run_cycle(self) -> None:
-        """Odpytuje po kolei wszystkie aktywne środowiska Splunk."""
+        """Odpytuje wyłącznie środowiska, których własny interwał już minął.
+
+        Status KAŻDEGO skonfigurowanego środowiska trafia do statuses przy
+        każdym tyknięciu (nawet tych jeszcze nie należnych) - tabela w GUI
+        ma zawsze pokazywać ostatni znany stan, nie tylko to, co świeżo
+        odpytano w tym konkretnym tyknięciu.
+        """
         environments = self._settings.enabled_splunk_environments()
         fresh_alerts: list[EventAlert] = []
         statuses: list[ClientStatus] = []
+        now = time.monotonic()
 
         for env in environments:
-            runtime = self._runtimes.setdefault(
-                env.label, _SplunkRuntime(status=ClientStatus(label=env.label, method="Splunk"))
-            )
-            fresh_alerts.extend(self._poll_one(env, runtime))
+            runtime = self._runtimes.get(env.label)
+            if runtime is None:
+                # Pierwsze wystąpienie tego środowiska w tej sesji - należne
+                # od razu (next_due_at=0.0 z definicji _SplunkRuntime).
+                runtime = _SplunkRuntime(status=ClientStatus(label=env.label, method="Splunk"))
+                self._runtimes[env.label] = runtime
+
+            if now >= runtime.next_due_at:
+                fresh_alerts.extend(self._poll_one(env, runtime))
+                runtime.next_due_at = now + env.poll_interval_sec
+
             statuses.append(runtime.status)
 
         if fresh_alerts:
@@ -603,9 +643,30 @@ class SplunkWorker(QThread):
 
         status.is_available = True
         status.error = ""
+        status.note = self._token_expiry_note(env)
         status.last_read_at = datetime.now()
         status.last_read_duration = elapsed
         status.incident_count = len(incidents)
         status.active_events = len(machine.active_alerts())
 
         return alerts
+
+    def _token_expiry_note(self, env: SplunkEnvironment) -> str:
+        """Ostrzeżenie do kolumny Uwagi, jeśli token zbliża się do wygaśnięcia.
+
+        Odczytuje RZECZYWISTY termin z samego tokenu (JWT, pole "exp") -
+        ustalone wprost: "nie każdy token ma 14 dni ważności", więc nie ma
+        tu żadnego zgadywania stałego okresu. Sprawdzane tylko po udanym
+        odczycie (środowisko już wiadomo, że działa) - to jest zapowiedź
+        nadchodzącego problemu, nie osobny rodzaj awarii.
+        """
+        expiry = decode_token_expiry(env.token)
+        if expiry is None:
+            return ""  # nie da się odczytać - milczymy, nie zgadujemy
+
+        remaining_days = (expiry - datetime.now(timezone.utc)).days
+        if remaining_days < 0:
+            return "token Splunk prawdopodobnie WYGASŁ"
+        if remaining_days <= _TOKEN_EXPIRY_WARNING_DAYS:
+            return f"token Splunk wygasa za {remaining_days} dni"
+        return ""

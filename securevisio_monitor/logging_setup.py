@@ -12,7 +12,13 @@ import sys
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
-DEFAULT_LOG_PATH = Path("logs") / "monitor.log"
+from .icon import get_app_dir
+
+# Rozwiązywane względem katalogu programu (icon.get_app_dir()), nie katalogu
+# roboczego procesu - ta sama naprawa, co dla settings.json i ikony aplikacji.
+# Bez tego zbudowany .exe uruchomiony z innym katalogiem aktywnym niż
+# oczekiwany zapisywałby log w zupełnie innym, nieoczekiwanym miejscu.
+DEFAULT_LOG_PATH = get_app_dir() / "logs" / "monitor.log"
 
 # Świadomie mały budżet dyskowy: 256 KB na plik i jedna kopia zapasowa,
 # czyli maksymalnie ~512 KB niezależnie od czasu pracy monitora. To wystarcza

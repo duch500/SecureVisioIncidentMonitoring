@@ -19,9 +19,11 @@ import wave
 from pathlib import Path
 from typing import Optional
 
+from .icon import get_app_dir
+
 logger = logging.getLogger(__name__)
 
-SOUNDS_DIR = Path("sounds")
+SOUNDS_DIR = get_app_dir() / "sounds"
 DEFAULT_SOUND_NAME = "alarm_domyslny.wav"
 
 _SAMPLE_RATE = 44100
