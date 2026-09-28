@@ -34,6 +34,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QMainWindow,
+    QMenu,
     QMessageBox,
     QPlainTextEdit,
     QPushButton,
@@ -167,6 +168,10 @@ class MainWindow(QMainWindow):
         # zamiast nadpisywać nawzajem swoje wiersze.
         self._securevisio_statuses: list[ClientStatus] = []
         self._splunk_statuses: list[ClientStatus] = []
+        # Etykieta -> time.monotonic() do kiedy środowisko jest wyciszone.
+        # Sztywne, dwie opcje czasu (5 albo 10 minut) - ustalone wprost,
+        # żeby nie kusiło do wyciszania "na zawsze przypadkiem".
+        self._muted_until: dict[str, float] = {}
 
         # Ustawienie ikony bezpośrednio na oknie, niezależnie od
         # QApplication.setWindowIcon() wywoływanego w app.py. Zabezpieczenie
@@ -259,6 +264,8 @@ class MainWindow(QMainWindow):
         self.table.setSelectionBehavior(QTableWidget.SelectRows)
         self.table.setCursor(Qt.PointingHandCursor)
         self.table.itemDoubleClicked.connect(self._on_table_double_clicked)
+        self.table.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.table.customContextMenuRequested.connect(self._on_table_context_menu)
 
         header = self.table.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.ResizeToContents)
@@ -959,6 +966,85 @@ class MainWindow(QMainWindow):
         else:
             self.lbl_colors_note.setText("")
 
+    # --- Wyciszanie powiadomień per środowisko ------------------------------
+
+    def _on_table_context_menu(self, pos) -> None:
+        """Prawy przycisk na wierszu tabeli - wyciszenie powiadomień.
+
+        Sztywne, dokładnie dwie opcje czasu (5 i 10 minut) - ustalone wprost,
+        żadnej możliwości wpisania własnej wartości. Wyciszenie dotyczy
+        wyłącznie ALARMÓW dla tego środowiska - monitorowanie w tle działa
+        bez zmian, więc po zakończeniu wyciszenia operator nie traci
+        informacji o tym, co się działo w międzyczasie.
+        """
+        item = self.table.itemAt(pos)
+        if item is None:
+            return
+        label_item = self.table.item(item.row(), 0)
+        if label_item is None:
+            return
+        label = label_item.text()
+
+        menu = QMenu(self)
+        action_5 = menu.addAction("Wycisz na 5 minut")
+        action_10 = menu.addAction("Wycisz na 10 minut")
+        chosen = menu.exec(self.table.viewport().mapToGlobal(pos))
+
+        if chosen is action_5:
+            self._mute_environment(label, 5 * 60)
+        elif chosen is action_10:
+            self._mute_environment(label, 10 * 60)
+
+    def _mute_environment(self, label: str, seconds: int) -> None:
+        self._muted_until[label] = time.monotonic() + seconds
+        self.log(f"Wyciszono powiadomienia dla „{label}” na {seconds // 60} minut.")
+        self._refresh_table(self._securevisio_statuses + self._splunk_statuses)
+
+    def _filter_muted(self, alerts: list) -> list:
+        """Odrzuca zdarzenia ze środowisk aktualnie wyciszonych.
+
+        Świadomie NIE usuwa nic z maszyny stanów ani z self._muted_until -
+        to czysto wyświetleniowy filtr. Zdarzenie odrzucone tutaj pozostaje
+        w pełni śledzone jako aktywne w state_machine.py (worker o nim nie
+        wie i nie musi wiedzieć) - dzięki temu po zakończeniu wyciszenia
+        wciąż aktywne zdarzenie da się odzyskać przez active_alerts(),
+        zamiast zniknąć bezpowrotnie.
+        """
+        if not self._muted_until:
+            return alerts
+        now = time.monotonic()
+        return [a for a in alerts if self._muted_until.get(a.client, 0) <= now]
+
+    def _process_expired_mutes(self) -> None:
+        """Sprawdza, czy jakieś wyciszenie właśnie wygasło, i "budzi" alarmy.
+
+        Kluczowe dla poprawności: AlertManager.on_tick() przypomina tylko
+        o zdarzeniach, które były już RAZ pokazane (self._last_hidden_at
+        ustawione) - zdarzenie w pełni stłumione przez cały czas wyciszenia
+        nigdy by tamtędy nie wróciło. Dlatego świeżo odwyciszone, wciąż
+        aktywne zdarzenia przepuszczamy przez _on_new_alerts jako "świeżo
+        wykryte" - to jedyny pewny sposób, żeby nie zgubić ich na zawsze.
+        """
+        if not self._muted_until:
+            return
+
+        now = time.monotonic()
+        expired_labels = [
+            label for label, until in self._muted_until.items() if until <= now
+        ]
+        if not expired_labels:
+            return
+
+        for label in expired_labels:
+            del self._muted_until[label]
+            self.log(f"Wyciszenie środowiska „{label}” zakończone.")
+
+        reactivated = [
+            a for a in self._active_alerts_all_sources() if a.client in expired_labels
+        ]
+        if reactivated:
+            self._on_new_alerts(reactivated)
+
     # --- Przywracanie okna z poziomu alarmu -------------------------------
 
     def _on_table_double_clicked(self, item) -> None:
@@ -1067,6 +1153,10 @@ class MainWindow(QMainWindow):
     # --- Reakcje na sygnały workera ---------------------------------------
 
     def _on_new_alerts(self, alerts: list) -> None:
+        alerts = self._filter_muted(alerts)
+        if not alerts:
+            return
+
         for alert in alerts:
             self.log(
                 f"NOWE ZDARZENIE — {alert.client} / {alert.location_label} "
@@ -1313,15 +1403,19 @@ class MainWindow(QMainWindow):
         Jedna wspólna lista zasila zarówno alarm pełnoekranowy, jak i
         przypomnienia w trybie powiadomień - operator ma dostać jedno,
         spójne przypomnienie o wszystkim, co czeka, niezależnie od źródła.
+        Wyciszone środowiska są odfiltrowane tutaj - dzięki temu przypomnienia
+        (on_tick) też ich nie dotyczą, nie tylko pierwsze wykrycie.
         """
         alerts = []
         if self._worker is not None:
             alerts.extend(self._worker.active_alerts())
         if self._splunk_worker is not None:
             alerts.extend(self._splunk_worker.active_alerts())
-        return alerts
+        return self._filter_muted(alerts)
 
     def _on_reminder_tick(self) -> None:
+        self._process_expired_mutes()
+
         if self._worker is None and self._splunk_worker is None:
             return
 
@@ -1399,6 +1493,18 @@ class MainWindow(QMainWindow):
                 # uwagi. Nigdy nie przesłania realnego błędu (error ma
                 # pierwszeństwo, sprawdzone wyżej).
                 note = status.note
+
+            mute_until = self._muted_until.get(status.label)
+            if mute_until is not None:
+                remaining_sec = mute_until - time.monotonic()
+                if remaining_sec > 0:
+                    # Zaokrąglenie w górę - "wyciszone jeszcze 1 min" zamiast
+                    # mylącego "0 min" tuż przed wygaśnięciem.
+                    remaining_min = int(remaining_sec // 60) + (1 if remaining_sec % 60 else 0)
+                    mute_text = f"wyciszone jeszcze {max(remaining_min, 1)} min"
+                    # Dołączane, nie zastępujące - błąd albo inne ostrzeżenie
+                    # ma zostać widoczne nawet w trakcie wyciszenia alarmów.
+                    note = f"{note} ({mute_text})" if note else mute_text
 
             values = [
                 status.label,

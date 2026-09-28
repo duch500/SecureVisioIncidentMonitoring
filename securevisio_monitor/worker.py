@@ -106,60 +106,75 @@ class _ClientRuntime:
     loss_reported: bool = False
 
 
-class MonitorWorker(QThread):
-    """Cyklicznie sprawdza wszystkie skonfigurowane środowiska SecureVisio.
+class PollingWorker(QThread):
+    """Wspólny szkielet dla MonitorWorker (SecureVisio) i SplunkWorker.
 
-    Sygnały:
+    Obejmuje to, co między nimi identyczne: bezpieczne uruchamianie i
+    zatrzymywanie wątku (z naprawionym wyścigiem start/stop - patrz start()),
+    oraz operacje na wspólnej MonitorState (potwierdzanie zdarzeń, odczyt
+    aktywnych alertów). Sama pętla odpytywania (run()) celowo NIE jest tu
+    wspólna - modele harmonogramowania są naprawdę różne: MonitorWorker ma
+    jeden, globalny interwał dla wszystkich klientów naraz, SplunkWorker
+    śledzi każde środowisko niezależnie, z własnym interwałem. Wymuszanie
+    wspólnej pętli tylko po to, żeby "było DRY", ukryłoby tę różnicę zamiast
+    ją wyrazić w kodzie.
+
+    Kontrakt dla podklas: __init__ musi wywołać super().__init__(settings),
+    a NASTĘPNIE ustawić self._state (MonitorState) z właściwymi dla siebie
+    parametrami (phrases, source) - baza celowo tego nie robi, bo te
+    parametry różnią się między SecureVisio a Splunkiem.
+
+    Sygnały wspólne:
         new_alerts: Świeżo wykryte przejścia na status nowego zdarzenia.
-        clients_lost: Etykiety klientów, których okno właśnie zniknęło.
-        clients_returned: Etykiety klientów, których okno wróciło.
-        connection_lost: Etykiety klientów z wykrytym zerwaniem połączenia.
-        status_updated: Pełny stan wszystkich klientów po każdym cyklu.
-        tick: Zakończono cykl sprawdzania (do odliczania przypomnień).
+        status_updated: Pełny stan wszystkich środowisk po każdym cyklu.
         log_message: Komunikat do wyświetlenia w logu GUI.
     """
 
     new_alerts = Signal(list)
-    clients_lost = Signal(list)
-    clients_returned = Signal(list)
-    connection_lost = Signal(list)
     status_updated = Signal(list)
-    tick = Signal(list)
     log_message = Signal(str)
 
     def __init__(self, settings: AppSettings) -> None:
         super().__init__()
         self._settings = settings
-        self._state = MonitorState(
-            phrases=settings.default_phrases,
-            alert_on_first_scan=settings.alert_on_first_scan,
-        )
-        self._resolver = ClientResolver(
-            base_dir=settings.base_dir or None,
-            manual_map=settings.manual_map(),
-        )
-        self._runtimes: dict[str, _ClientRuntime] = {}
-        # Klienci pilnowani w bieżącej sesji - patrz _expected_clients.
-        self._session_clients: set[str] = set()
         self._running = False
-        self._check_now = False
+        # self._state (MonitorState) ustawiane przez podklasę - patrz
+        # docstring klasy. Metody poniżej zakładają, że już istnieje w
+        # momencie ich wywołania (zawsze prawda w praktyce - GUI wywołuje
+        # je dopiero po pełnym skonstruowaniu workera).
 
-    # --- Sterowanie --------------------------------------------------------
+    def start(self, *args, **kwargs) -> None:  # noqa: D102 - nadpisanie QThread.start
+        """Ustawia flagę PRZED faktycznym wystartowaniem wątku systemowego.
+
+        Bez tego istniał realny wyścig: run() na nowym wątku ustawiał
+        self._running = True jako swoją pierwszą instrukcję - jeśli stop()
+        z wątku głównego zdążył wywołać się wcześniej (np. przypadkowe
+        Start->Stop tuż po sobie), nowy wątek i tak nadpisywał to z powrotem
+        na True, cicho ignorując żądanie zatrzymania aż do końca pierwszego
+        pełnego interwału. Ustawienie flagi tutaj, zanim wątek systemowy
+        w ogóle ruszy, eliminuje ten wyścig - run() już nigdy nie pisze True.
+
+        Naprawione niezależnie w obu workerach, zanim istniała ta wspólna
+        klasa bazowa - stąd waga tego komentarza: kolejny błąd tej klasy
+        (flaga sterująca pętlą wątku) ma być naprawiany tu, raz, a nie
+        osobno w każdej podklasie.
+        """
+        self._running = True
+        super().start(*args, **kwargs)
 
     def stop(self) -> None:
-        """Sygnalizuje zatrzymanie pętli. Bezpieczne do wywołania z GUI."""
-        self._running = False
+        """Sygnalizuje zatrzymanie pętli. Nieblokujące - bezpieczne z GUI.
 
-    def check_now(self) -> None:
-        """Wymusza natychmiastowe sprawdzenie, bez czekania na interwał."""
-        self._check_now = True
+        Żadne wywołanie z wątku GUI nie może czekać synchronicznie na
+        zakończenie wątku, bo to zamraża interfejs na czas oczekiwania.
+        """
+        self._running = False
 
     def acknowledge(self, alerts: list[EventAlert]) -> None:
         """Oznacza wskazane zdarzenia jako potwierdzone przez operatora."""
         by_client: dict[str, list[str]] = {}
         for alert in alerts:
             by_client.setdefault(alert.client, []).append(alert.incident_id)
-
         for client, incident_ids in by_client.items():
             self._state.machine_for(client).acknowledge(incident_ids)
 
@@ -182,21 +197,45 @@ class MonitorWorker(QThread):
         """Zdarzenia nadal nieobsłużone i niepotwierdzone."""
         return self._state.active_alerts()
 
+
+class MonitorWorker(PollingWorker):
+    """Cyklicznie sprawdza wszystkie skonfigurowane środowiska SecureVisio.
+
+    Sygnały (poza wspólnymi z PollingWorker - new_alerts, status_updated,
+    log_message):
+        clients_lost: Etykiety klientów, których okno właśnie zniknęło.
+        clients_returned: Etykiety klientów, których okno wróciło.
+        connection_lost: Etykiety klientów z wykrytym zerwaniem połączenia.
+        tick: Zakończono cykl sprawdzania (do odliczania przypomnień).
+    """
+
+    clients_lost = Signal(list)
+    clients_returned = Signal(list)
+    connection_lost = Signal(list)
+    tick = Signal(list)
+
+    def __init__(self, settings: AppSettings) -> None:
+        super().__init__(settings)
+        self._state = MonitorState(
+            phrases=settings.default_phrases,
+            alert_on_first_scan=settings.alert_on_first_scan,
+        )
+        self._resolver = ClientResolver(
+            base_dir=settings.base_dir or None,
+            manual_map=settings.manual_map(),
+        )
+        self._runtimes: dict[str, _ClientRuntime] = {}
+        # Klienci pilnowani w bieżącej sesji - patrz _expected_clients.
+        self._session_clients: set[str] = set()
+        self._check_now = False
+
+    # --- Sterowanie --------------------------------------------------------
+
+    def check_now(self) -> None:
+        """Wymusza natychmiastowe sprawdzenie, bez czekania na interwał."""
+        self._check_now = True
+
     # --- Pętla -------------------------------------------------------------
-
-    def start(self, *args, **kwargs) -> None:  # noqa: D102 - nadpisanie QThread.start
-        """Ustawia flagę PRZED faktycznym wystartowaniem wątku systemowego.
-
-        Bez tego istniał realny wyścig: run() na nowym wątku ustawiał
-        self._running = True jako swoją pierwszą instrukcję - jeśli stop()
-        z wątku głównego zdążył wywołać się wcześniej (np. przypadkowe
-        Start->Stop tuż po sobie), nowy wątek i tak nadpisywał to z powrotem
-        na True, cicho ignorując żądanie zatrzymania aż do końca pierwszego
-        pełnego interwału. Ustawienie flagi tutaj, zanim wątek systemowy
-        w ogóle ruszy, eliminuje ten wyścig - run() już nigdy nie pisze True.
-        """
-        self._running = True
-        super().start(*args, **kwargs)
 
     def run(self) -> None:  # noqa: D102 - API QThread
         # Nowa sesja - lista pilnowanych środowisk budowana od zera.
@@ -471,83 +510,33 @@ class _SplunkRuntime:
     next_due_at: float = 0.0
 
 
-class SplunkWorker(QThread):
+class SplunkWorker(PollingWorker):
     """Cyklicznie odpytuje wszystkie skonfigurowane środowiska Splunk.
 
-    Architektonicznie równoległy do MonitorWorker, ale celowo osobny wątek:
-    interwał odpytywania Splunka (minimum 120s, ustalone wprost) jest rzędu
-    wielkości większy niż dla SecureVisio, a mechanizm odczytu (REST, nie UI
-    Automation) jest zupełnie inny. Współdzieli natomiast state_machine.py
-    bez żadnych zmian w jego logice - SplunkIncident udostępnia network_map
-    jako alias rule_name, więc mechanizm wykrywania przejść w status "nowy"
-    (tu: status="1", potwierdzone empirycznie) działa identycznie jak dla
-    SecureVisio, łącznie z zasadą "zniknięcie z wyniku nie generuje żadnego
-    alarmu" (ustalone wprost: incydent, który wypadnie z okna retencji
-    lookupa, ma nic nie wywoływać - state_machine.py już się tak zachowuje
+    Architektonicznie równoległy do MonitorWorker (obie dziedziczą po
+    PollingWorker), ale celowo osobny wątek: interwał odpytywania Splunka
+    (minimum 120s, ustalone wprost) jest rzędu wielkości większy niż dla
+    SecureVisio, a mechanizm odczytu (REST, nie UI Automation) jest zupełnie
+    inny - stąd też własna, niezależna od MonitorWorker pętla run(), zamiast
+    dzielenia jej przez klasę bazową (patrz docstring PollingWorker).
+    Współdzieli natomiast state_machine.py bez żadnych zmian w jego logice -
+    SplunkIncident udostępnia network_map jako alias rule_name, więc
+    mechanizm wykrywania przejść w status "nowy" (tu: status="1",
+    potwierdzone empirycznie) działa identycznie jak dla SecureVisio,
+    łącznie z zasadą "zniknięcie z wyniku nie generuje żadnego alarmu"
+    (ustalone wprost: incydent, który wypadnie z okna retencji lookupa,
+    ma nic nie wywoływać - state_machine.py już się tak zachowuje
     natywnie, bez dodatkowego kodu).
-
-    Sygnały:
-        new_alerts: Świeżo wykryte przejścia na status nowego zdarzenia.
-        status_updated: Pełny stan wszystkich środowisk po każdym cyklu.
-        log_message: Komunikat do wyświetlenia w logu GUI.
     """
 
-    new_alerts = Signal(list)
-    status_updated = Signal(list)
-    log_message = Signal(str)
-
     def __init__(self, settings: AppSettings) -> None:
-        super().__init__()
-        self._settings = settings
+        super().__init__(settings)
         self._state = MonitorState(
             phrases=(NEW_INCIDENT_STATUS,),
             alert_on_first_scan=settings.alert_on_first_scan,
             source="Splunk",
         )
         self._runtimes: dict[str, _SplunkRuntime] = {}
-        self._running = False
-
-    def stop(self) -> None:
-        """Sygnalizuje zatrzymanie pętli. Nieblokujące - bezpieczne z GUI.
-
-        Ta sama zasada co naprawiona wcześniej w MainWindow.stop_monitoring:
-        żadne wywołanie z wątku GUI nie może czekać synchronicznie na
-        zakończenie wątku, bo to zamraża interfejs na czas oczekiwania.
-        """
-        self._running = False
-
-    def acknowledge(self, alerts: list[EventAlert]) -> None:
-        """Oznacza wskazane zdarzenia jako potwierdzone przez operatora.
-
-        Symetryczne do MonitorWorker.acknowledge - potrzebne, gdy jedna partia
-        potwierdzonych alarmów na ekranie zawiera zdarzenia z obu źródeł
-        naraz (SecureVisio i Splunk) i trzeba je rozdzielić do właściwego
-        workera po EventAlert.source.
-        """
-        by_client: dict[str, list[str]] = {}
-        for alert in alerts:
-            by_client.setdefault(alert.client, []).append(alert.incident_id)
-        for client, incident_ids in by_client.items():
-            self._state.machine_for(client).acknowledge(incident_ids)
-
-    def acknowledge_ids(self, client: str, incident_ids: Optional[list[str]] = None) -> None:
-        """Potwierdza zdarzenia jednego środowiska Splunk po identyfikatorach."""
-        self._state.machine_for(client).acknowledge(incident_ids)
-
-    def active_alerts(self) -> list[EventAlert]:
-        """Zdarzenia Splunka nadal nieobsłużone i niepotwierdzone."""
-        return self._state.active_alerts()
-
-    def start(self, *args, **kwargs) -> None:  # noqa: D102 - nadpisanie QThread.start
-        """Ustawia flagę przed startem wątku - patrz MonitorWorker.start.
-
-        Ten sam wyścig start/stop, ta sama naprawa - szczególnie istotna tu,
-        bo interwał Splunka (minimum 120s) sprawiał, że zignorowane stop()
-        potrafiłoby trzymać wątek żywy nieporównanie dłużej niż przy
-        SecureVisio (10s), zanim run() w ogóle sprawdziłby flagę ponownie.
-        """
-        self._running = True
-        super().start(*args, **kwargs)
 
     def run(self) -> None:  # noqa: D102 - API QThread
         """Pętla główna - sprawdza co _TICK_SEC, czy któreś środowisko jest należne.
